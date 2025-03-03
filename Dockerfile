@@ -11,5 +11,5 @@ COPY . .
 # Expose the port
 EXPOSE 3000
 
-# Start the server
-CMD ["npm", "start"]
+# Start the server correctly
+CMD ["node", "server.js"]
