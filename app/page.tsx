@@ -51,7 +51,7 @@ export default function ChatInterface() {
 
      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080"; 
 
-const response = await fetch(`${API_URL}/api/chat`, {
+const response = await fetch("https://scraping-ai-chat-production.up.railway.app/api/chat", {
   method: "POST",
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify({ message: userMessage.content, sessionId }),
