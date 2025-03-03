@@ -5,6 +5,13 @@ try {
   // ignore error
 }
 
+module.exports = {
+  output: 'standalone', // Ensures deployment works smoothly
+  experimental: {
+    outputFileTracingRoot: __dirname, // Fix for some Railway deployments
+  },
+};
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   eslint: {
