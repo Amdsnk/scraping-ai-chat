@@ -49,7 +49,7 @@ export default function ChatInterface() {
         sessionId: sessionId,
       });
 
-     const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080"; 
+     const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000"; 
 
 const response = await fetch("https://scraping-ai-chat-production.up.railway.app/api/chat", {
   method: "POST",
