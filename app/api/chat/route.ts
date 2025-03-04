@@ -5,6 +5,22 @@ import { OpenAIStream, StreamingTextResponse } from 'ai'
 import { Configuration, OpenAIApi } from 'openai-edge'
 import { NextResponse } from 'next/server'
 
+const configuration = new Configuration({
+  apiKey: process.env.OPENAI_API_KEY,
+});
+const openai = new OpenAIApi(configuration);
+
+export async function POST(req: Request) {
+  try {
+    const { message, sessionId } = await req.json();
+
+    if (!message) {
+      return NextResponse.json({ error: "Message is required" }, { status: 400 });
+    }
+    
+    // Get or create session
+    let session;
+    
 // Mock data for preview purposes
 const mockBreeders = [
   { name: "John Smith", phone: "555-123-4567", location: "MOTT ND" },
