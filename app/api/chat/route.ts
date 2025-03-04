@@ -1,6 +1,24 @@
 import { NextResponse } from "next/server"
 import { OpenAIStream, StreamingTextResponse } from "ai"
 import OpenAI from "openai"
+import axios from "axios"
+
+const API_URL = process.env.NEXT_PUBLIC_VERCEL_URL
+  ? `https://${process.env.NEXT_PUBLIC_VERCEL_URL}`
+  : "http://localhost:3000"
+
+export const sendMessage = async (message: string, sessionId?: string) => {
+  try {
+    const response = await axios.post(`${API_URL}/api/chat`, {
+      message,
+      sessionId,
+    })
+    return response.data
+  } catch (error) {
+    console.error("Error sending message:", error)
+    throw error
+  }
+}
 
 // Create OpenAI client
 const openai = new OpenAI({
