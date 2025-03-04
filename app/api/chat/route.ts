@@ -98,7 +98,8 @@ export async function POST(req: Request) {
       stream: true,
     })
 
-    const stream = OpenAIStream(response)
+    // Fix: Cast the response to any to avoid type issues
+    const stream = OpenAIStream(response as any)
 
     // Update session in storage
     session.results = results
