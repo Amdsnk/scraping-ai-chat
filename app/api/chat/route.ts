@@ -1,6 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { openai } from "@ai-sdk/openai"
 import { generateText } from "ai"
+import { OpenAIStream, StreamingTextResponse } from 'ai'
+import { Configuration, OpenAIApi } from 'openai-edge'
+import { NextResponse } from 'next/server'
 
 // Mock data for preview purposes
 const mockBreeders = [
@@ -19,13 +22,29 @@ const mockBreeders = [
 // In-memory session storage for preview
 const sessions = new Map()
 
-export async function POST(req: NextRequest) {
+export async function POST(req: Request) {
   try {
     const { message, sessionId } = await req.json()
 
     if (!message) {
       return NextResponse.json({ error: "Message is required" }, { status: 400 })
     }
+
+    // Replace generateText with OpenAI API call
+  const openai = new OpenAIApi(new Configuration({ apiKey: process.env.OPENAI_API_KEY }))
+
+  const response = await openai.createChatCompletion({
+    model: 'gpt-4',
+    messages: [
+      { role: 'system', content: 'You are a helpful assistant.' },
+      { role: 'user', content: message }
+    ],
+    stream: true,
+  })
+
+  const stream = OpenAIStream(response)
+  return new StreamingTextResponse(stream)
+}
 
     // Get or create session
     let session
