@@ -5,10 +5,8 @@ WORKDIR /app
 # Copy package.json and package-lock.json (if available)
 COPY package*.json ./
 
-RUN npm cache clean --force
-
 # Install dependencies with verbose output and more debugging info
-RUN npm install --verbose --no-audit --no-fund || (cat /root/.npm/_logs/*-debug.log && exit 1)
+RUN npm install --only=production
 
 # Copy the rest of the application files
 COPY . .
