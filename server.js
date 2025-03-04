@@ -88,15 +88,7 @@ app.use("/api/chat", async (req, res) => {
     });
     const data = await nextResponse.json();
     res.json(data);
-  } catch (error) {
-    console.error("Proxy error:", error);
-    res.status(500).json({ error: "Internal server error", details: error.message });
-  }
-});
-
-    const data = await nextResponse.json();
-    res.json(data);
-  } catch (error) {
+    catch (error) {
     console.error("Proxy error:", error);
     res.status(500).json({ error: "Internal server error", details: error.message });
   }
