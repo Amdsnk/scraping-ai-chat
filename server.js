@@ -8,7 +8,7 @@ import OpenAI from "openai"
 dotenv.config()
 
 const app = express()
-const PORT = process.env.PORT || 8080
+const port = process.env.PORT || 3000
 
 // Enhanced logging function
 const log = (message, ...args) => {
@@ -20,11 +20,9 @@ const logMemoryUsage = () => {
   log(`Memory usage: ${Math.round(used.rss / 1024 / 1024)}MB`)
 }
 
-// Call this periodically or before heavy operations
-logMemoryUsage()
-
 // Log all environment variables (be careful with sensitive information)
-log("Environment variables:", process.env)
+log("Environment variables:", Object.keys(process.env))
+log("PORT:", port)
 
 // Improved CORS configuration
 const corsOptions = {
@@ -56,7 +54,7 @@ try {
   log("Error initializing OpenAI client:", error)
 }
 
-// Health check endpoint for Railway
+// Health check endpoint
 app.get("/health", (req, res) => {
   log("Health check requested")
   res.status(200).json({ status: "healthy", timestamp: new Date().toISOString() })
@@ -389,8 +387,8 @@ app.use((req, res) => {
 })
 
 // Start the server
-const server = app.listen(PORT, "0.0.0.0", () => {
-  log(`Server running on http://0.0.0.0:${PORT}`)
+const server = app.listen(port, "0.0.0.0", () => {
+  log(`Server running on http://0.0.0.0:${port}`)
   log(`CORS configured for: ${corsOptions.origin}`)
   logMemoryUsage()
 })
