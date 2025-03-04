@@ -8,15 +8,15 @@ import OpenAI from "openai"
 dotenv.config()
 
 const app = express()
-const PORT = process.env.PORT || 3000
+const PORT = process.env.PORT || 8080
 
 const logMemoryUsage = () => {
-  const used = process.memoryUsage();
-  console.log(`Memory usage: ${Math.round(used.rss / 1024 / 1024)}MB`);
-};
+  const used = process.memoryUsage()
+  console.log(`Memory usage: ${Math.round(used.rss / 1024 / 1024)}MB`)
+}
 
 // Call this periodically or before heavy operations
-logMemoryUsage();
+logMemoryUsage()
 
 // Improved CORS configuration
 const corsOptions = {
@@ -27,81 +27,144 @@ const corsOptions = {
 }
 
 app.use(cors(corsOptions))
-app.use(express.json())
+app.use(express.json({ limit: "10mb" })) // Increased payload limit
 
 // Initialize clients with error handling
-const supabase = createClient(process.env.SUPABASE_URL || "https://hjcvkrxwdmfkgvjwynxm.supabase.co", process.env.SUPABASE_SERVICE_ROLE_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhqY3Zrcnh3ZG1ma2d2and5bnhtIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc0MTAyMTMwMywiZXhwIjoyMDU2NTk3MzAzfQ.HjIYUIrTDYMR-dq3LR9UD8iuXFU71xLdWOAhTe1nB0Y")
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
 
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY || "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",
+  apiKey: process.env.OPENAI_API_KEY,
+})
+
+// Health check endpoint for Railway
+app.get("/health", (req, res) => {
+  res.status(200).json({ status: "healthy" })
 })
 
 async function scrapeWebsite(url, pages = 1) {
-  const browser = await chromium.launch({
-    // Add headless browser options for better performance in production
-    headless: true,
-    args: [
-      '--disable-gpu',
-      '--disable-dev-shm-usage',
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--single-process',
-      '--no-zygote',
-      '--disable-extensions'
-  })
-  const context = await browser.newContext()
-  const page = await context.newPage()
+  console.log(`Starting scrape of ${url} for ${pages} pages`)
+  logMemoryUsage()
 
+  let browser = null
+  let context = null
+  let page = null
   let allResults = []
+  let timeout = null
 
   try {
-    for (let currentPage = 1; currentPage <= pages; currentPage++) {
-      const pageUrl = currentPage === 1 ? url : `${url}?page=${currentPage}`
-      await page.goto(pageUrl, { waitUntil: "networkidle" })
-
-      await page.waitForSelector(".breeder-card", { timeout: 10000 })
-
-      // Extract data from the page
-      const pageResults = await page.evaluate(() => {
-        const breeders = []
-        const cards = document.querySelectorAll(".breeder-card")
-
-        cards.forEach((card) => {
-          const nameElement = card.querySelector(".breeder-name")
-          const phoneElement = card.querySelector(".breeder-phone")
-          const locationElement = card.querySelector(".breeder-location")
-
-          breeders.push({
-            name: nameElement ? nameElement.textContent.trim() : "-",
-            phone: phoneElement ? phoneElement.textContent.trim() : "-",
-            location: locationElement ? locationElement.textContent.trim() : "-",
-          })
+    // Set a timeout for the entire scraping operation
+    const scrapePromise = new Promise(async (resolve, reject) => {
+      try {
+        // Playwright browser launch with Railway-compatible options
+        browser = await chromium.launch({
+          headless: true,
+          args: [
+            "--disable-gpu",
+            "--disable-dev-shm-usage",
+            "--no-sandbox",
+            "--disable-setuid-sandbox",
+            "--single-process",
+            "--no-zygote",
+            "--disable-extensions",
+          ],
         })
 
-        return breeders
-      })
+        context = await browser.newContext({
+          userAgent:
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+          viewport: { width: 1280, height: 720 },
+        })
 
-      allResults = [...allResults, ...pageResults]
+        page = await context.newPage()
 
-      // Check if there's a next page
-      const hasNextPage = await page.evaluate((currentPage) => {
-        const paginationLinks = document.querySelectorAll(".pagination a")
-        for (const link of paginationLinks) {
-          if (link.textContent.includes(String(currentPage + 1))) {
-            return true
+        // Set navigation timeout
+        page.setDefaultNavigationTimeout(30000)
+
+        for (let currentPage = 1; currentPage <= pages; currentPage++) {
+          console.log(`Scraping page ${currentPage} of ${pages}`)
+
+          const pageUrl = currentPage === 1 ? url : `${url}?page=${currentPage}`
+          await page.goto(pageUrl, { waitUntil: "networkidle" })
+
+          try {
+            // Wait for selector with a reasonable timeout
+            await page.waitForSelector(".breeder-card", { timeout: 10000 })
+
+            // Extract data from the page
+            const pageResults = await page.evaluate(() => {
+              const breeders = []
+              const cards = document.querySelectorAll(".breeder-card")
+
+              cards.forEach((card) => {
+                const nameElement = card.querySelector(".breeder-name")
+                const phoneElement = card.querySelector(".breeder-phone")
+                const locationElement = card.querySelector(".breeder-location")
+
+                breeders.push({
+                  name: nameElement ? nameElement.textContent.trim() : "-",
+                  phone: phoneElement ? phoneElement.textContent.trim() : "-",
+                  location: locationElement ? locationElement.textContent.trim() : "-",
+                })
+              })
+
+              return breeders
+            })
+
+            allResults = [...allResults, ...pageResults]
+            console.log(`Found ${pageResults.length} results on page ${currentPage}`)
+
+            // Check if there's a next page
+            const hasNextPage = await page.evaluate((currentPage) => {
+              const paginationLinks = document.querySelectorAll(".pagination a")
+              for (const link of paginationLinks) {
+                if (link.textContent.includes(String(currentPage + 1))) {
+                  return true
+                }
+              }
+              return false
+            }, currentPage)
+
+            if (!hasNextPage && currentPage < pages) {
+              console.log(`No more pages found after page ${currentPage}`)
+              break
+            }
+          } catch (pageError) {
+            console.error(`Error on page ${currentPage}:`, pageError.message)
+            // Continue to next page even if current page fails
+            continue
           }
         }
-        return false
-      }, currentPage)
 
-      if (!hasNextPage && currentPage < pages) {
-        break
+        resolve(allResults)
+      } catch (error) {
+        reject(error)
       }
-    }
+    })
+
+    // Set a timeout for the entire scraping operation
+    const timeoutPromise = new Promise((_, reject) => {
+      timeout = setTimeout(() => {
+        reject(new Error("Scraping timed out after 60 seconds"))
+      }, 60000) // 60 second timeout
+    })
+
+    // Race between scraping and timeout
+    allResults = await Promise.race([scrapePromise, timeoutPromise])
   } catch (error) {
-    console.error("Scraping error:", error)
+    console.error("Scraping error:", error.message)
+    // Return empty array instead of failing completely
+    allResults = []
   } finally {
-    await browser.close()
+    // Clear timeout if it exists
+    if (timeout) clearTimeout(timeout)
+
+    // Close browser resources
+    if (page) await page.close().catch((e) => console.error("Error closing page:", e.message))
+    if (context) await context.close().catch((e) => console.error("Error closing context:", e.message))
+    if (browser) await browser.close().catch((e) => console.error("Error closing browser:", e.message))
+
+    logMemoryUsage()
+    console.log(`Scraping completed with ${allResults.length} total results`)
   }
 
   return allResults
@@ -121,6 +184,9 @@ app.get("/", (req, res) => {
 
 app.post("/api/chat", async (req, res) => {
   try {
+    console.log("Received chat request")
+    logMemoryUsage()
+
     const { message, sessionId } = req.body
 
     if (!message) {
@@ -137,6 +203,7 @@ app.post("/api/chat", async (req, res) => {
         .single()
 
       if (sessionError && sessionError.code !== "PGRST116") {
+        console.error("Session error:", sessionError)
         throw sessionError
       }
 
@@ -149,7 +216,10 @@ app.post("/api/chat", async (req, res) => {
           .select()
           .single()
 
-        if (error) throw error
+        if (error) {
+          console.error("New session error:", error)
+          throw error
+        }
         session = newSession
       }
     } else {
@@ -159,7 +229,10 @@ app.post("/api/chat", async (req, res) => {
         .select()
         .single()
 
-      if (error) throw error
+      if (error) {
+        console.error("New session error:", error)
+        throw error
+      }
       session = newSession
     }
 
@@ -179,40 +252,71 @@ app.post("/api/chat", async (req, res) => {
     // Check if the message is a scraping request
     let response
     if (message.toLowerCase().includes("from the url")) {
+      console.log("Processing scraping request")
+
       // Extract URL and page count
       const url = message.match(/https?:\/\/[^\s]+/)?.[0] || "https://herefordsondemand.com/find-a-breeder/"
       const pageMatch = message.match(/page\s+(\d+)\s+until\s+(\d+)/i)
       const pages = pageMatch ? Number.parseInt(pageMatch[2]) : 1
 
-      // Scrape the website
-      const scrapingResults = await scrapeWebsite(url, pages)
-      session.results = scrapingResults
+      console.log(`Scraping URL: ${url}, Pages: ${pages}`)
 
-      // Process with AI
-      const aiResponse = await openai.chat.completions.create({
-        model: "gpt-4",
-        messages: [
-          { role: "system", content: "You are a helpful assistant." },
-          {
-            role: "user",
-            content: `The user asked: "${message}". I've scraped the website and found ${scrapingResults.length} breeders. Please provide a helpful response summarizing what I found.`,
-          },
-        ],
-      })
+      try {
+        // Scrape the website with a timeout
+        const scrapingPromise = scrapeWebsite(url, pages)
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error("Scraping operation timed out")), 90000) // 90 second timeout
+        })
 
-      response = aiResponse.choices[0].message.content
+        const scrapingResults = await Promise.race([scrapingPromise, timeoutPromise])
+        session.results = scrapingResults
+
+        console.log(`Scraping completed with ${scrapingResults.length} results`)
+
+        // Process with AI
+        const aiResponse = await openai.chat.completions.create({
+          model: "gpt-4",
+          messages: [
+            { role: "system", content: "You are a helpful assistant." },
+            {
+              role: "user",
+              content: `The user asked: "${message}". I've scraped the website and found ${scrapingResults.length} breeders. Please provide a helpful response summarizing what I found.`,
+            },
+          ],
+          max_tokens: 500,
+        })
+
+        response = aiResponse.choices[0].message.content
+      } catch (scrapingError) {
+        console.error("Scraping operation failed:", scrapingError.message)
+
+        // Fallback response if scraping fails
+        const aiResponse = await openai.chat.completions.create({
+          model: "gpt-4",
+          messages: [
+            { role: "system", content: "You are a helpful assistant." },
+            {
+              role: "user",
+              content: `The user asked: "${message}". I tried to scrape the website but encountered an error: ${scrapingError.message}. Please provide a helpful response explaining the issue and suggesting alternatives.`,
+            },
+          ],
+          max_tokens: 500,
+        })
+
+        response = aiResponse.choices[0].message.content
+        session.results = []
+      }
     } else {
       // Regular chat message
+      console.log("Processing regular chat message")
+
       const aiResponse = await openai.chat.completions.create({
         model: "gpt-4",
         messages: [
           { role: "system", content: "You are a helpful assistant." },
           ...session.messages.slice(-5), // Include recent conversation history
-          {
-            role: "user",
-            content: `Based on the conversation history and available data, please provide a helpful response to: "${message}".`,
-          },
         ],
+        max_tokens: 500,
       })
 
       response = aiResponse.choices[0].message.content
@@ -230,7 +334,10 @@ app.post("/api/chat", async (req, res) => {
       })
       .eq("id", session.id)
 
-    if (error) throw error
+    if (error) {
+      console.error("Session update error:", error)
+      throw error
+    }
 
     // Send response
     res.json({
@@ -238,6 +345,8 @@ app.post("/api/chat", async (req, res) => {
       results: session.results,
       sessionId: session.id,
     })
+
+    logMemoryUsage()
   } catch (error) {
     console.error("API error:", error)
     res.status(500).json({ error: "Internal server error", details: error.message })
@@ -255,9 +364,9 @@ app.use((req, res) => {
   res.status(404).json({ error: "Not Found", message: "The requested resource does not exist." })
 })
 
-const PORT = process.env.PORT || 8080
+// Start the server
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`)
   console.log(`CORS configured for: ${corsOptions.origin}`)
+  logMemoryUsage()
 })
-
