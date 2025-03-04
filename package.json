@@ -21,7 +21,10 @@
     "ai": "2.1.28"
   },
   "devDependencies": {
-    "nodemon": "^2.0.22"
+    "nodemon": "2.0.22",
+    "@types/react": "18.2.14",
+    "@types/node": "20.3.3",
+    "typescript": "5.1.6"
   },
   "engines": {
     "node": ">=18.0.0"
