@@ -26,7 +26,7 @@ log("PORT:", port)
 
 // Improved CORS configuration
 const corsOptions = {
-  origin: process.env.FRONTEND_URL || "https://scraping-ai-chat.vercel.app",
+  origin: process.env.FRONTEND_URL || "https://scraping-ai-chat-git-main-amdsnk-9d866dcd.vercel.app/",
   methods: ["GET", "POST"],
   allowedHeaders: ["Content-Type", "Authorization"],
   credentials: true,
