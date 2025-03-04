@@ -2,9 +2,11 @@ FROM mcr.microsoft.com/playwright:v1.40.0-focal
 
 WORKDIR /app
 
-# Copy package.json and install dependencies
+# Copy package.json and package-lock.json (if available)
 COPY package*.json ./
-RUN npm ci
+
+# Install dependencies with more verbose output
+RUN npm install --verbose
 
 # Copy the rest of the application files
 COPY . .
