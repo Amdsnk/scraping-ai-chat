@@ -75,6 +75,8 @@ app.get("/", (req, res) => {
 });
 
 // Proxy /api/chat requests to Next.js API
+const backendUrl = process.env.BACKEND_URL?.replace(/\/$/, ""); // Remove trailing slash
+const response = await fetch(`${backendUrl}/api/chat`, { method: "POST", ... });
 app.use("/api/chat", async (req, res) => {
   try {
     const nextResponse = await fetch("http://localhost:3000/api/chat", {
