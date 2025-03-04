@@ -28,7 +28,6 @@ const corsOptions = {
   origin: (origin, callback) => {
     const allowedOrigins = [
       "https://scraping-ai-chat.vercel.app",
-      "https://scraping-ai-chat-git-main-amdsnk-9d866dcd.vercel.app",
     ]
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true)
