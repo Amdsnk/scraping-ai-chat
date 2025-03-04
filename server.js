@@ -387,21 +387,34 @@ app.use((req, res) => {
 })
 
 // Start the server
-const server = app.listen(port, "0.0.0.0", () => {
-  log(`Server running on http://0.0.0.0:${port}`)
-  log(`CORS configured for: ${corsOptions.origin}`)
-  logMemoryUsage()
+console.log("Starting server...")
+console.log("Environment:", process.env.NODE_ENV)
+console.log("Port:", port)
+
+app.listen(port, "0.0.0.0", () => {
+  console.log(`Server is running on http://0.0.0.0:${port}`)
 })
 
 // Handle server errors
-server.on("error", (error) => {
-  log("Server error:", error)
-})
+// server.on("error", (error) => {
+//   log("Server error:", error)
+// })
 
 // Graceful shutdown
-process.on("SIGTERM", () => {
-  log("SIGTERM signal received: closing HTTP server")
-  server.close(() => {
-    log("HTTP server closed")
-  })
+// process.on("SIGTERM", () => {
+//   log("SIGTERM signal received: closing HTTP server")
+//   server.close(() => {
+//     log("HTTP server closed")
+//   })
+// })
+
+// Log any uncaught exceptions
+process.on("uncaughtException", (error) => {
+  console.error("Uncaught Exception:", error)
+  process.exit(1)
+})
+
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("Unhandled Rejection at:", promise, "reason:", reason)
+  // Application specific logging, throwing an error, or other logic here
 })
