@@ -5,11 +5,11 @@ const nextConfig = {
   async rewrites() {
     return [
       {
-        source: '/api/:path*',
-        destination: 'https://scraping-ai-chat-production.up.railway.app/',
+        source: "/api/:path*",
+        destination: "https://scraping-ai-chat-production.up.railway.app/",
       },
-    ];
+    ]
   },
-};
+}
 
-export default nextConfig;
+export default nextConfig
