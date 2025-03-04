@@ -56,8 +56,7 @@ try {
 
 // Health check endpoint
 app.get("/health", (req, res) => {
-  log("Health check requested")
-  res.status(200).json({ status: "healthy", timestamp: new Date().toISOString() })
+  res.status(200).json({ status: "OK", timestamp: new Date().toISOString() })
 })
 
 // Root route
