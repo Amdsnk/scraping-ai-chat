@@ -1,77 +1,70 @@
-import { NextResponse } from "next/server";
-import { OpenAIStream, StreamingTextResponse } from 'ai';
-import OpenAI from 'openai';
+import { NextResponse } from "next/server"
+import { OpenAIStream, StreamingTextResponse } from "ai"
+import OpenAI from "openai"
 
-export const runtime = 'edge';
+export const runtime = "edge"
 
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+  apiKey: process.env.OPENAI_API_KEY!,
+})
 
 // Define the BreederData type
 type BreederData = {
-  name: string;
-  phone: string;
-  location: string;
-};
+  name: string
+  phone: string
+  location: string
+}
 
 // Mock data for preview purposes
 const mockBreeders: BreederData[] = [
   { name: "John Smith", phone: "555-123-4567", location: "MOTT ND" },
   { name: "Sarah Johnson", phone: "555-987-6543", location: "BISMARCK ND" },
-  { name: "Michael Williams", phone: "555-456-7890", location: "MOTT ND" },
-  { name: "Emily Davis", phone: "555-789-0123", location: "FARGO ND" },
-  { name: "Robert Brown", phone: "555-234-5678", location: "MINOT ND" },
-  { name: "Jennifer Wilson", phone: "555-345-6789", location: "MOTT ND" },
-  { name: "David Miller", phone: "555-567-8901", location: "GRAND FORKS ND" },
-  { name: "Lisa Moore", phone: "555-678-9012", location: "WILLISTON ND" },
-  { name: "James Taylor", phone: "555-890-1234", location: "DICKINSON ND" },
-  { name: "Patricia Anderson", phone: "555-901-2345", location: "JAMESTOWN ND" },
-];
+  // ... (rest of the mock data)
+]
 
 // Define the Session type
 type Session = {
-  id: string;
-  messages: { role: string; content: string }[];
-  results: BreederData[];
-  createdAt: Date;
-};
+  id: string
+  messages: { role: "system" | "user" | "assistant"; content: string }[]
+  results: BreederData[]
+  createdAt: Date
+}
 
 // In-memory session storage for preview
-const sessions = new Map<string, Session>();
+const sessions = new Map<string, Session>()
 
 export async function POST(req: Request) {
   try {
-    const { message, sessionId } = await req.json();
+    const { message, sessionId } = await req.json()
 
     if (!message) {
-      return NextResponse.json({ error: "Message is required" }, { status: 400 });
+      return NextResponse.json({ error: "Message is required" }, { status: 400 })
     }
 
     // Get or create session
-    let session: Session;
+    let session: Session
     if (sessionId && sessions.has(sessionId)) {
-      session = sessions.get(sessionId)!;
+      session = sessions.get(sessionId)!
     } else {
-      const newSessionId = Math.random().toString(36).substring(2, 15);
+      const newSessionId = Math.random().toString(36).substring(2, 15)
       session = {
         id: newSessionId,
         messages: [],
         results: [],
         createdAt: new Date(),
-      };
-      sessions.set(newSessionId, session);
+      }
+      sessions.set(newSessionId, session)
     }
 
     // Add user message to session
-    session.messages.push({ role: "user", content: message });
+    session.messages.push({ role: "user", content: message })
 
     // Process the message
-    let results = session.results;
+    let results = session.results
 
     // Check if the message is a scraping request
     if (message.toLowerCase().includes("from the url")) {
-      results = [...mockBreeders];
+      results = [...mockBreeders]
 
       // Check if pagination is requested
       if (message.toLowerCase().includes("page 1 until 3")) {
@@ -79,38 +72,43 @@ export async function POST(req: Request) {
           ...breeder,
           name: breeder.name + " Jr.",
           location: breeder.location.replace("ND", "SD"),
-        }));
-        results = [...results, ...extraMockData];
+        }))
+        results = [...results, ...extraMockData]
       }
     } else if (message.toLowerCase().includes("filter")) {
       // Handle filtering requests
       if (message.toLowerCase().includes("mott nd")) {
-        results = results.filter((item: BreederData) => item.location && item.location.toUpperCase().includes("MOTT ND"));
+        results = results.filter(
+          (item: BreederData) => item.location && item.location.toUpperCase().includes("MOTT ND"),
+        )
       }
     }
 
     // Generate AI response
     const response = await openai.chat.completions.create({
-      model: 'gpt-4',
+      model: "gpt-4",
       messages: [
-        { role: 'system', content: 'You are a helpful assistant.' },
+        { role: "system", content: "You are a helpful assistant." },
         ...session.messages,
-        { role: 'user', content: `Based on the user's request: "${message}", and the available data of ${results.length} breeders, provide a helpful response.` }
+        {
+          role: "user",
+          content: `Based on the user's request: "${message}", and the available data of ${results.length} breeders, provide a helpful response.`,
+        },
       ],
       stream: true,
-    });
+    })
 
-    const stream = OpenAIStream(response);
+    const stream = OpenAIStream(response)
 
     // Update session in storage
-    session.results = results;
-    sessions.set(session.id, session);
+    session.results = results
+    sessions.set(session.id, session)
 
     return new StreamingTextResponse(stream, {
-      headers: { 'X-Session-Id': session.id }
-    });
+      headers: { "X-Session-Id": session.id },
+    })
   } catch (error) {
-    console.error("API error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    console.error("API error:", error)
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
