@@ -75,23 +75,25 @@ app.get("/", (req, res) => {
 });
 
 // Proxy /api/chat requests to Next.js API
-if (!process.env.API_URL || !process.env.API_URL.startsWith("http")) {
-  console.error("ERROR: Invalid API_URL:", process.env.API_URL);
-  process.exit(1); // Stop the app if API_URL is incorrect
-}
-
+// Proxy /api/chat requests to Next.js API
+console.log("API_URL:", process.env.API_URL);
 app.use("/api/chat", async (req, res) => {
   try {
-    console.log("Using API_URL:", process.env.API_URL); // Log API_URL for debugging
-
-    const nextResponse = await fetch(process.env.API_URL, {
+    const nextResponse = await fetch(${process.env.API_URL}, {
       method: req.method,
-      headers: {
+     headers: {
         "Content-Type": "application/json",
-        ...(req.headers.authorization && { Authorization: req.headers.authorization }),
+        ...(req.headers.authorization && { Authorization: req.headers.authorization }) // Pass auth headers if any
       },
-      body: req.method !== "GET" ? JSON.stringify(req.body) : null,
+      body: req.method !== "GET" ? JSON.stringify(req.body) : null, // Include body only for POST/PUT requests
     });
+    const data = await nextResponse.json();
+    res.json(data);
+  } catch (error) {
+    console.error("Proxy error:", error);
+    res.status(500).json({ error: "Internal server error", details: error.message });
+  }
+});
 
     const data = await nextResponse.json();
     res.json(data);
