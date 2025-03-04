@@ -10,39 +10,74 @@ dotenv.config()
 const app = express()
 const PORT = process.env.PORT || 8080
 
+// Enhanced logging function
+const log = (message, ...args) => {
+  console.log(new Date().toISOString(), message, ...args)
+}
+
 const logMemoryUsage = () => {
   const used = process.memoryUsage()
-  console.log(`Memory usage: ${Math.round(used.rss / 1024 / 1024)}MB`)
+  log(`Memory usage: ${Math.round(used.rss / 1024 / 1024)}MB`)
 }
 
 // Call this periodically or before heavy operations
 logMemoryUsage()
+
+// Log all environment variables (be careful with sensitive information)
+log("Environment variables:", process.env)
 
 // Improved CORS configuration
 const corsOptions = {
   origin: process.env.FRONTEND_URL || "https://scraping-ai-chat.vercel.app",
   methods: ["GET", "POST"],
   allowedHeaders: ["Content-Type", "Authorization"],
-  credentials: true, // Enable credentials (cookies, authorization headers)
+  credentials: true,
 }
 
 app.use(cors(corsOptions))
-app.use(express.json({ limit: "10mb" })) // Increased payload limit
+app.use(express.json({ limit: "10mb" }))
 
 // Initialize clients with error handling
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
+let supabase
+try {
+  supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
+  log("Supabase client initialized successfully")
+} catch (error) {
+  log("Error initializing Supabase client:", error)
+}
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-})
+let openai
+try {
+  openai = new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+  })
+  log("OpenAI client initialized successfully")
+} catch (error) {
+  log("Error initializing OpenAI client:", error)
+}
 
 // Health check endpoint for Railway
 app.get("/health", (req, res) => {
-  res.status(200).json({ status: "healthy" })
+  log("Health check requested")
+  res.status(200).json({ status: "healthy", timestamp: new Date().toISOString() })
+})
+
+// Root route
+app.get("/", (req, res) => {
+  log("Root route accessed")
+  res.json({
+    message: "Welcome to the AI Web Scraping Chat API",
+    endpoints: {
+      chat: "/api/chat",
+      health: "/health",
+    },
+    version: "1.0.0",
+    status: "online",
+  })
 })
 
 async function scrapeWebsite(url, pages = 1) {
-  console.log(`Starting scrape of ${url} for ${pages} pages`)
+  log(`Starting scrape of ${url} for ${pages} pages`)
   logMemoryUsage()
 
   let browser = null
@@ -81,7 +116,7 @@ async function scrapeWebsite(url, pages = 1) {
         page.setDefaultNavigationTimeout(30000)
 
         for (let currentPage = 1; currentPage <= pages; currentPage++) {
-          console.log(`Scraping page ${currentPage} of ${pages}`)
+          log(`Scraping page ${currentPage} of ${pages}`)
 
           const pageUrl = currentPage === 1 ? url : `${url}?page=${currentPage}`
           await page.goto(pageUrl, { waitUntil: "networkidle" })
@@ -111,7 +146,7 @@ async function scrapeWebsite(url, pages = 1) {
             })
 
             allResults = [...allResults, ...pageResults]
-            console.log(`Found ${pageResults.length} results on page ${currentPage}`)
+            log(`Found ${pageResults.length} results on page ${currentPage}`)
 
             // Check if there's a next page
             const hasNextPage = await page.evaluate((currentPage) => {
@@ -125,7 +160,7 @@ async function scrapeWebsite(url, pages = 1) {
             }, currentPage)
 
             if (!hasNextPage && currentPage < pages) {
-              console.log(`No more pages found after page ${currentPage}`)
+              log(`No more pages found after page ${currentPage}`)
               break
             }
           } catch (pageError) {
@@ -164,27 +199,15 @@ async function scrapeWebsite(url, pages = 1) {
     if (browser) await browser.close().catch((e) => console.error("Error closing browser:", e.message))
 
     logMemoryUsage()
-    console.log(`Scraping completed with ${allResults.length} total results`)
+    log(`Scraping completed with ${allResults.length} total results`)
   }
 
   return allResults
 }
 
-// Root route
-app.get("/", (req, res) => {
-  res.json({
-    message: "Welcome to the AI Web Scraping Chat API",
-    endpoints: {
-      chat: "/api/chat",
-    },
-    version: "1.0.0",
-    status: "online",
-  })
-})
-
 app.post("/api/chat", async (req, res) => {
   try {
-    console.log("Received chat request")
+    log("Received chat request")
     logMemoryUsage()
 
     const { message, sessionId } = req.body
@@ -252,14 +275,14 @@ app.post("/api/chat", async (req, res) => {
     // Check if the message is a scraping request
     let response
     if (message.toLowerCase().includes("from the url")) {
-      console.log("Processing scraping request")
+      log("Processing scraping request")
 
       // Extract URL and page count
       const url = message.match(/https?:\/\/[^\s]+/)?.[0] || "https://herefordsondemand.com/find-a-breeder/"
       const pageMatch = message.match(/page\s+(\d+)\s+until\s+(\d+)/i)
       const pages = pageMatch ? Number.parseInt(pageMatch[2]) : 1
 
-      console.log(`Scraping URL: ${url}, Pages: ${pages}`)
+      log(`Scraping URL: ${url}, Pages: ${pages}`)
 
       try {
         // Scrape the website with a timeout
@@ -271,7 +294,7 @@ app.post("/api/chat", async (req, res) => {
         const scrapingResults = await Promise.race([scrapingPromise, timeoutPromise])
         session.results = scrapingResults
 
-        console.log(`Scraping completed with ${scrapingResults.length} results`)
+        log(`Scraping completed with ${scrapingResults.length} results`)
 
         // Process with AI
         const aiResponse = await openai.chat.completions.create({
@@ -308,7 +331,7 @@ app.post("/api/chat", async (req, res) => {
       }
     } else {
       // Regular chat message
-      console.log("Processing regular chat message")
+      log("Processing regular chat message")
 
       const aiResponse = await openai.chat.completions.create({
         model: "gpt-4",
@@ -355,18 +378,32 @@ app.post("/api/chat", async (req, res) => {
 
 // Error handling middleware
 app.use((err, req, res, next) => {
-  console.error(err.stack)
+  log("Error caught in middleware:", err)
   res.status(500).json({ error: "Something went wrong!", details: err.message })
 })
 
 // 404 handler
 app.use((req, res) => {
+  log("404 - Not Found:", req.originalUrl)
   res.status(404).json({ error: "Not Found", message: "The requested resource does not exist." })
 })
 
 // Start the server
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`)
-  console.log(`CORS configured for: ${corsOptions.origin}`)
+const server = app.listen(PORT, "0.0.0.0", () => {
+  log(`Server running on http://0.0.0.0:${PORT}`)
+  log(`CORS configured for: ${corsOptions.origin}`)
   logMemoryUsage()
+})
+
+// Handle server errors
+server.on("error", (error) => {
+  log("Server error:", error)
+})
+
+// Graceful shutdown
+process.on("SIGTERM", () => {
+  log("SIGTERM signal received: closing HTTP server")
+  server.close(() => {
+    log("HTTP server closed")
+  })
 })
