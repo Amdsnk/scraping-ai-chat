@@ -9,6 +9,7 @@ dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 3000;
+console.log("ENV VARIABLES:", process.env);
 console.log("API_URL:", process.env.API_URL); // Debugging
 
 const log = (message, ...args) => {
