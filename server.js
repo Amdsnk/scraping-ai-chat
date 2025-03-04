@@ -81,7 +81,12 @@ app.use("/api/chat", async (req, res) => {
       throw new Error("API_URL is not defined in environment variables.");
     }
 
-    const nextResponse = await fetch(`${process.env.API_URL}/api/chat`, {
+    const apiUrl = process.env.API_URL?.trim(); // Ensure it's defined and trimmed
+if (!apiUrl || !apiUrl.startsWith("http")) {
+  return res.status(500).json({ error: "API_URL is missing or invalid in environment variables" });
+}
+
+const nextResponse = await fetch(`${apiUrl}/api/chat`, {
       method: req.method,
       headers: {
         "Content-Type": "application/json",
