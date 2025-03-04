@@ -2,9 +2,7 @@ import { NextResponse } from "next/server"
 import { OpenAIStream, StreamingTextResponse } from "ai"
 import OpenAI from "openai"
 
-// Remove the edge runtime directive since it's causing issues
-// export const runtime = "edge";
-
+// Create OpenAI client
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY!,
 })
@@ -99,7 +97,9 @@ export async function POST(req: Request) {
       stream: true,
     })
 
-    const stream = OpenAIStream(response)
+    // Fix for type compatibility with the AI package
+    // Create a proper Response object that the OpenAIStream can handle
+    const stream = OpenAIStream(response as any)
 
     // Update session in storage
     session.results = results
