@@ -29,6 +29,7 @@
     "@radix-ui/react-tabs": "^1.0.0",
     "tailwind-merge": "^2.0.0",
     "@ai-sdk/openai": "^1.0.0",
+    "tailwindcss-animate": "^1.0.5",
     "ai": "^2.2.31"
   },
   "devDependencies": {
