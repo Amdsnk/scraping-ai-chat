@@ -77,8 +77,22 @@ app.use((req, res, next) => {
   next()
 })
 
+// Health check endpoint
+app.get("/health", (req, res) => {
+  res.status(200).json({ status: "OK", timestamp: new Date().toISOString() })
+})
+
+// Root route
 app.get("/", (req, res) => {
-  res.send("Hello World!")
+  res.json({
+    message: "Welcome to the AI Web Scraping Chat API",
+    endpoints: {
+      chat: "/api/chat",
+      health: "/health",
+    },
+    version: "1.0.0",
+    status: "online",
+  })
 })
 
 // Add your chat API route
@@ -89,8 +103,14 @@ app.post("/api/chat", (req, res) => {
 
 // Error handling middleware
 app.use((err, req, res, next) => {
-  log("Error:", err.message)
-  res.status(500).json({ error: "Internal Server Error" })
+  log("Error caught in middleware:", err)
+  res.status(500).json({ error: "Something went wrong!", details: err.message })
+})
+
+// 404 handler
+app.use((req, res) => {
+  log("404 - Not Found:", req.originalUrl)
+  res.status(404).json({ error: "Not Found", message: "The requested resource does not exist." })
 })
 
 app.listen(port, "0.0.0.0", () => {
