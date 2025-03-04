@@ -10,6 +10,8 @@ dotenv.config();
 const app = express();
 const port = process.env.PORT || 3000;
 
+console.log("API_URL:", process.env.API_URL); // Debugging
+
 const log = (message, ...args) => {
   console.log(new Date().toISOString(), message, ...args);
 };
@@ -75,23 +77,33 @@ app.get("/", (req, res) => {
 });
 
 // Proxy /api/chat requests to Next.js API
-console.log("API_URL:", process.env.API_URL);
 app.use("/api/chat", async (req, res) => {
   try {
-    const nextResponse = await fetch(`${process.env.API_URL}`, { 
+    if (!process.env.API_URL) {
+      throw new Error("API_URL is not defined in environment variables.");
+    }
+
+    const nextResponse = await fetch(`${process.env.API_URL}/api/chat`, {
       method: req.method,
-     headers: {
+      headers: {
         "Content-Type": "application/json",
-        ...(req.headers.authorization && { Authorization: req.headers.authorization }) // Pass auth headers if any
+        ...(req.headers.authorization && { Authorization: req.headers.authorization }),
       },
-      body: req.method !== "GET" ? JSON.stringify(req.body) : null, // Include body only for POST/PUT requests
+      body: req.method !== "GET" ? JSON.stringify(req.body) : null,
     });
+
     const data = await nextResponse.json();
     res.json(data);
-    catch (error) {
+  } catch (error) {
     console.error("Proxy error:", error);
     res.status(500).json({ error: "Internal server error", details: error.message });
   }
+});
+
+// Start the Express server
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT}`);
 });
 
 app.use((err, req, res, next) => {
