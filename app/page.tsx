@@ -22,7 +22,7 @@ type BreederData = {
   location: string
 }
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://scraping-ai-chat-production.up.railway.app/"
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://scraping-ai-chat-production.up.railway.app/api/chat"
 
 export default function ChatInterface() {
   const [messages, setMessages] = useState<Message[]>([])
