@@ -387,6 +387,8 @@ app.use((req, res) => {
 })
 
 // Start the server
+// Use PORT provided in environment or default to 3000
+const port = process.env.PORT || 3000;
 const server = app.listen(port, "0.0.0.0", () => {
   log(`Server running on http://0.0.0.0:${port}`)
   log(`CORS configured for: ${corsOptions.origin}`)
