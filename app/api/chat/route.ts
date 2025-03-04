@@ -8,8 +8,15 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
+// Define the BreederData type
+type BreederData = {
+  name: string;
+  phone: string;
+  location: string;
+};
+
 // Mock data for preview purposes
-const mockBreeders = [
+const mockBreeders: BreederData[] = [
   { name: "John Smith", phone: "555-123-4567", location: "MOTT ND" },
   { name: "Sarah Johnson", phone: "555-987-6543", location: "BISMARCK ND" },
   { name: "Michael Williams", phone: "555-456-7890", location: "MOTT ND" },
@@ -22,8 +29,16 @@ const mockBreeders = [
   { name: "Patricia Anderson", phone: "555-901-2345", location: "JAMESTOWN ND" },
 ];
 
+// Define the Session type
+type Session = {
+  id: string;
+  messages: { role: string; content: string }[];
+  results: BreederData[];
+  createdAt: Date;
+};
+
 // In-memory session storage for preview
-const sessions = new Map();
+const sessions = new Map<string, Session>();
 
 export async function POST(req: Request) {
   try {
@@ -34,9 +49,9 @@ export async function POST(req: Request) {
     }
 
     // Get or create session
-    let session;
+    let session: Session;
     if (sessionId && sessions.has(sessionId)) {
-      session = sessions.get(sessionId);
+      session = sessions.get(sessionId)!;
     } else {
       const newSessionId = Math.random().toString(36).substring(2, 15);
       session = {
@@ -70,7 +85,7 @@ export async function POST(req: Request) {
     } else if (message.toLowerCase().includes("filter")) {
       // Handle filtering requests
       if (message.toLowerCase().includes("mott nd")) {
-        results = results.filter((item) => item.location && item.location.toUpperCase().includes("MOTT ND"));
+        results = results.filter((item: BreederData) => item.location && item.location.toUpperCase().includes("MOTT ND"));
       }
     }
 
