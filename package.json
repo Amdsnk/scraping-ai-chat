@@ -26,7 +26,6 @@
     "@radix-ui/react-slot": "^1.0.0",
     "@radix-ui/react-scroll-area": "^1.0.0",
     "class-variance-authority": "^0.7.0",
-    // ... other dependencies
     "@radix-ui/react-tabs": "^1.0.0",
     "tailwind-merge": "^2.0.0",
     "@ai-sdk/openai": "^1.0.0",
