@@ -5,8 +5,8 @@ WORKDIR /app
 # Copy package.json and package-lock.json (if available)
 COPY package*.json ./
 
-# Install dependencies with verbose output
-RUN npm install --verbose
+# Install dependencies with verbose output and more debugging info
+RUN npm install --verbose --no-audit --no-fund || (cat /root/.npm/_logs/*-debug.log && exit 1)
 
 # Copy the rest of the application files
 COPY . .
@@ -15,7 +15,7 @@ COPY . .
 RUN npx playwright install chromium
 
 # Expose the port (this is for documentation, Railway will still use the PORT env var)
-EXPOSE 8080
+EXPOSE 3000
 
 # Start the server
 CMD ["node", "server.js"]
