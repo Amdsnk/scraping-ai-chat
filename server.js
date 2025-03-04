@@ -15,6 +15,9 @@ const logMemoryUsage = () => {
   console.log(`Memory usage: ${Math.round(used.rss / 1024 / 1024)}MB`);
 };
 
+// Call this periodically or before heavy operations
+logMemoryUsage();
+
 // Improved CORS configuration
 const corsOptions = {
   origin: process.env.FRONTEND_URL || "https://scraping-ai-chat.vercel.app",
