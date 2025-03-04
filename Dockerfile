@@ -5,8 +5,8 @@ WORKDIR /app
 # Copy package.json and package-lock.json (if available)
 COPY package*.json ./
 
-# Install dependencies with more verbose output
-RUN npm install --verbose
+# Install dependencies
+RUN npm install
 
 # Copy the rest of the application files
 COPY . .
@@ -14,11 +14,7 @@ COPY . .
 # Install Playwright browsers
 RUN npx playwright install chromium
 
-# Set environment variables
-ENV NODE_ENV=production
-ENV PORT=8080
-
-# Expose the port
+# Expose the port (this is for documentation, Railway will still use the PORT env var)
 EXPOSE 8080
 
 # Start the server
