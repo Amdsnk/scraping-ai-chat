@@ -1,13 +1,12 @@
 import { NextResponse } from "next/server";
 import { OpenAIStream, StreamingTextResponse } from 'ai';
-import { Configuration, OpenAIApi } from 'openai-edge';
+import OpenAI from 'openai';
 
 export const runtime = 'edge';
 
-const configuration = new Configuration({
+const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
-const openai = new OpenAIApi(configuration);
 
 // Mock data for preview purposes
 const mockBreeders = [
@@ -76,7 +75,7 @@ export async function POST(req: Request) {
     }
 
     // Generate AI response
-    const response = await openai.createChatCompletion({
+    const response = await openai.chat.completions.create({
       model: 'gpt-4',
       messages: [
         { role: 'system', content: 'You are a helpful assistant.' },
