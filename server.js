@@ -116,7 +116,6 @@ app.use((req, res) => {
   res.status(404).json({ error: "Not Found", message: "The requested resource does not exist." });
 });
 
-const PORT = process.env.PORT || 8080;
 app.listen(port, "0.0.0.0", () => {
   console.log(`Server is running on http://0.0.0.0:${port}`);
 });
