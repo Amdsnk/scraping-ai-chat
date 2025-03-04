@@ -1,79 +1,92 @@
-"use client";
+"use client"
 
-import type React from "react";
-import { useState, useRef, useEffect } from "react";
-import { Button } from "../components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Send, Loader2 } from "lucide-react";
+import type React from "react"
+
+import { useState, useRef, useEffect } from "react"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Send, Loader2 } from "lucide-react"
 
 type Message = {
-  role: "user" | "assistant";
-  content: string;
-};
+  role: "user" | "assistant"
+  content: string
+}
 
 type BreederData = {
-  name: string;
-  phone: string;
-  location: string;
-};
+  name: string
+  phone: string
+  location: string
+}
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://scraping-ai-chat-production.up.railway.app/"
 
 export default function ChatInterface() {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [sessionId, setSessionId] = useState<string | null>(null);
-  const [results, setResults] = useState<BreederData[]>([]);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [messages, setMessages] = useState<Message[]>([])
+  const [input, setInput] = useState("")
+  const [isLoading, setIsLoading] = useState(false)
+  const [sessionId, setSessionId] = useState<string | null>(null)
+  const [results, setResults] = useState<BreederData[]>([])
+  const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  // Scroll to bottom on new messages
+  // Scroll to bottom of messages
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!input.trim()) return;
+    e.preventDefault()
+    if (!input.trim()) return
 
-    const userMessage = { role: "user" as const, content: input };
-    setMessages((prev) => [...prev, userMessage]);
-    setInput("");
-    setIsLoading(true);
+    // Add user message to chat
+    const userMessage = { role: "user" as const, content: input }
+    setMessages((prev) => [...prev, userMessage])
+    setInput("")
+    setIsLoading(true)
 
     try {
-      console.log("Sending request to /api/chat with:", {
-        message: userMessage.content,
-        sessionId: sessionId,
-      });
+      // Send message to API
+      const response = await fetch(`${API_URL}/api/chat`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          message: userMessage.content,
+          sessionId: sessionId,
+        }),
+      })
 
-     const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000"; 
+      if (!response.ok) {
+        throw new Error("Failed to send message")
+      }
 
-const response = await fetch("https://scraping-ai-chat-production.up.railway.app/api/chat", {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ message: userMessage.content, sessionId }),
-});
+      const data = await response.json()
 
-      if (!response.ok) throw new Error("Failed to send message");
+      // Add AI response to chat
+      setMessages((prev) => [...prev, { role: "assistant", content: data.text }])
 
-      const data = await response.json();
-      console.log("API Response:", data);
-
-      if (!data.text) throw new Error("Invalid API response");
-
-      setMessages((prev) => [...prev, { role: "assistant", content: data.text }]);
-      setSessionId(data.sessionId);
-      if (Array.isArray(data.results)) setResults(data.results);
+      // Update session ID and results
+      setSessionId(data.sessionId)
+      if (data.results && Array.isArray(data.results)) {
+        setResults(data.results)
+      }
     } catch (error) {
-      console.error("Error sending message:", error);
-      alert("Error communicating with the API. Check console for details.");
+      console.error("Error sending message:", error)
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: "Sorry, there was an error processing your request. Please try again.",
+        },
+      ])
     } finally {
-      setIsLoading(false);
+      setIsLoading(false)
     }
-  };
+  }
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50 p-4">
@@ -183,5 +196,5 @@ const response = await fetch("https://scraping-ai-chat-production.up.railway.app
         </div>
       </div>
     </div>
-  );
+  )
 }
