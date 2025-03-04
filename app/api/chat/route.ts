@@ -44,7 +44,7 @@ export async function POST(req: Request) {
 
   const stream = OpenAIStream(response)
   return new StreamingTextResponse(stream)
-}
+};
 
     // Get or create session
     let session
@@ -131,7 +131,7 @@ export async function POST(req: Request) {
     sessions.set(session.id, session)
 
     // Send response
-    return NextResponse.json({
+    return Response.json({
       text: aiResponse.text,
       results: results,
       sessionId: session.id,
