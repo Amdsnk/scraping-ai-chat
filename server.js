@@ -80,7 +80,6 @@ app.use("/api/chat", async (req, res) => {
     const nextResponse = await fetch(`${process.env.API_URL}`, {
       method: req.method,
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(req.body),
     });
     const data = await nextResponse.json();
     res.json(data);
