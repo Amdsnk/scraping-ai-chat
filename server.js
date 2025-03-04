@@ -40,7 +40,14 @@ async function scrapeWebsite(url, pages = 1) {
   const browser = await chromium.launch({
     // Add headless browser options for better performance in production
     headless: true,
-    args: ["--disable-gpu", "--disable-dev-shm-usage", "--no-sandbox", "--disable-setuid-sandbox"],
+    args: [
+      '--disable-gpu',
+      '--disable-dev-shm-usage',
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--single-process',
+      '--no-zygote',
+      '--disable-extensions'
   })
   const context = await browser.newContext()
   const page = await context.newPage()
