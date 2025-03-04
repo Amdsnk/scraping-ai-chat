@@ -75,6 +75,7 @@ app.get("/", (req, res) => {
 });
 
 // Proxy /api/chat requests to Next.js API
+console.log("API_URL:", process.env.API_URL);
 app.use("/api/chat", async (req, res) => {
   try {
     const nextResponse = await fetch(`${process.env.API_URL}`, {
