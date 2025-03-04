@@ -18,9 +18,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Message is required" }, { status: 400 });
     }
     
-    // Get or create session
-    let session;
-    
 // Mock data for preview purposes
 const mockBreeders = [
   { name: "John Smith", phone: "555-123-4567", location: "MOTT ND" },
@@ -59,7 +56,13 @@ export async function POST(req: Request) {
   })
 
   const stream = OpenAIStream(response)
-  return new StreamingTextResponse(stream)
+  return new StreamingTextResponse(stream);
+  } catch (error) {
+    console.error("API error:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}
+    
 };
 
     // Get or create session
