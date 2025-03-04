@@ -81,7 +81,7 @@ app.use("/api/chat", async (req, res) => {
   try {
     const nextResponse = await fetch("http://localhost:3000/api/chat", {
       method: req.method,
-      headers: { ...req.headers, host: "localhost" },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(req.body),
     });
     const data = await nextResponse.json();
