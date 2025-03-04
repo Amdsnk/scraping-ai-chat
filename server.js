@@ -79,7 +79,11 @@ app.use("/api/chat", async (req, res) => {
   try {
     const nextResponse = await fetch(`${process.env.API_URL}`, {
       method: req.method,
-      headers: { "Content-Type": "application/json" },
+     headers: {
+        "Content-Type": "application/json",
+        ...(req.headers.authorization && { Authorization: req.headers.authorization }) // Pass auth headers if any
+      },
+      body: req.method !== "GET" ? JSON.stringify(req.body) : null, // Include body only for POST/PUT requests
     });
     const data = await nextResponse.json();
     res.json(data);
