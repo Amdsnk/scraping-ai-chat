@@ -95,10 +95,30 @@ app.get("/", (req, res) => {
   })
 })
 
-// Add your chat API route
-app.post("/api/chat", (req, res) => {
-  // Your chat logic here
-  res.json({ message: "Chat API is working" })
+// Chat API route
+app.post("/api/chat", async (req, res) => {
+  try {
+    log("Received chat request")
+    logMemoryUsage()
+
+    const { message, sessionId } = req.body
+
+    if (!message) {
+      return res.status(400).json({ error: "Message is required" })
+    }
+
+    // Your existing chat logic here
+    // ...
+
+    // For now, let's just send a simple response
+    res.json({
+      text: "This is a test response from the server.",
+      sessionId: sessionId || "test-session",
+    })
+  } catch (error) {
+    console.error("API error:", error)
+    res.status(500).json({ error: "Internal server error", details: error.message })
+  }
 })
 
 // Error handling middleware
