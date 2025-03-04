@@ -77,7 +77,7 @@ app.get("/", (req, res) => {
 // Proxy /api/chat requests to Next.js API
 app.use("/api/chat", async (req, res) => {
   try {
-    const nextResponse = await fetch("http://localhost:3000/api/chat", {
+    const nextResponse = await fetch(`${API_URL}`, {
       method: req.method,
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(req.body),
