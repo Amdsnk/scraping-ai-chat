@@ -10,6 +10,11 @@ dotenv.config()
 const app = express()
 const PORT = process.env.PORT || 3000
 
+const logMemoryUsage = () => {
+  const used = process.memoryUsage();
+  console.log(`Memory usage: ${Math.round(used.rss / 1024 / 1024)}MB`);
+};
+
 // Improved CORS configuration
 const corsOptions = {
   origin: process.env.FRONTEND_URL || "https://scraping-ai-chat.vercel.app",
