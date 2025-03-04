@@ -6,9 +6,9 @@
   "main": "server.js",
   "type": "module",
   "scripts": {
-    "dev": "next dev",
+    "dev": "npx nodemon server.js",
     "build": "next build",
-    "start": "next start",
+    "start": "node server.js",
     "lint": "next lint"
   },
   "dependencies": {
