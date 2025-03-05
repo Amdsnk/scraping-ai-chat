@@ -24,25 +24,27 @@ export async function POST(request: NextRequest) {
     })
 
     if (!response.ok) {
-      const errorData = await response.json()
-      console.error("Backend scraping error:", errorData)
+      const errorText = await response.text()
+      console.error("Backend scraping error:", errorText)
       return NextResponse.json(
-        { error: "Error from scraping service", details: errorData },
+        { error: "Error from scraping service", details: errorText },
         { status: response.status },
       )
     }
 
     const data = await response.json()
+    console.log("Received scrape response from backend:", JSON.stringify(data, null, 2))
     return NextResponse.json(data)
   } catch (error: unknown) {
     console.error("Error in scrape route:", error)
-    return NextResponse.json(
-      {
-        error: "Internal server error",
-        message: error instanceof Error ? error.message : "Unknown error",
-      },
-      { status: 500 },
-    )
+    let errorMessage = "Internal server error"
+    let errorDetails = {}
+
+    if (error instanceof Error) {
+      errorMessage = error.message
+      errorDetails = { name: error.name, stack: error.stack }
+    }
+
+    return NextResponse.json({ error: errorMessage, details: errorDetails }, { status: 500 })
   }
 }
-
