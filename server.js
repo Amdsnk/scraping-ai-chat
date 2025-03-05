@@ -253,7 +253,7 @@ app.all("/api/chat", async (req, res) => {
     try {
       console.log("Received request body:", JSON.stringify(req.body, null, 2))
 
-      let { message, sessionId, urls = [] } = req.body
+      let { message, sessionId, scrapedData } = req.body
 
       // Create a new session if it doesn't exist
       if (!sessionId || !sessions.has(sessionId)) {
@@ -263,34 +263,23 @@ app.all("/api/chat", async (req, res) => {
 
       const session = sessions.get(sessionId)
 
+      // Update session with the latest scraped data
+      if (scrapedData && Array.isArray(scrapedData)) {
+        session.scrapedData = scrapedData
+      }
+
       // Add user message to session
       session.messages.push({ role: "user", content: message })
 
-      // If URLs are provided, store the first one
-      if (urls.length > 0) {
-        session.lastUrl = urls[0]
-      }
-
       let scrapedDataContext = ""
       if (session.scrapedData && session.scrapedData.length > 0) {
-        // Process data to replace empty values with '-'
-        const processedData = session.scrapedData.map((item) => {
-          const processedItem = { ...item }
-          Object.keys(processedItem).forEach((key) => {
-            if (!processedItem[key] || processedItem[key].trim() === "") {
-              processedItem[key] = "-"
-            }
-          })
-          return processedItem
-        })
-
-        scrapedDataContext = `Previously scraped data (${processedData.length} items):\n${JSON.stringify(processedData.slice(0, 20), null, 2)}\n\n`
+        scrapedDataContext = `Previously scraped data (${session.scrapedData.length} items):\n${JSON.stringify(session.scrapedData.slice(0, 20), null, 2)}\n\n`
 
         // Add a summary of the data
         scrapedDataContext += "Data summary:\n"
-        const locations = new Set(processedData.map((item) => item.location).filter((loc) => loc && loc !== "-"))
+        const locations = new Set(session.scrapedData.map((item) => item.location).filter((loc) => loc && loc !== "-"))
         scrapedDataContext += `- Locations: ${Array.from(locations).join(", ")}\n`
-        scrapedDataContext += `- Total breeders: ${processedData.length}\n\n`
+        scrapedDataContext += `- Total breeders: ${session.scrapedData.length}\n\n`
       } else {
         scrapedDataContext = "No data has been scraped yet.\n\n"
       }
@@ -305,18 +294,7 @@ app.all("/api/chat", async (req, res) => {
             item[filterKey.toLowerCase()].toLowerCase().includes(filterValue.toLowerCase()),
         )
 
-        // Process filtered data to replace empty values with '-'
-        const processedFilteredData = filteredData.map((item) => {
-          const processedItem = { ...item }
-          Object.keys(processedItem).forEach((key) => {
-            if (!processedItem[key] || processedItem[key].trim() === "") {
-              processedItem[key] = "-"
-            }
-          })
-          return processedItem
-        })
-
-        scrapedDataContext = `Filtered data (${processedFilteredData.length} items):\n${JSON.stringify(processedFilteredData.slice(0, 20), null, 2)}\n\n`
+        scrapedDataContext = `Filtered data (${filteredData.length} items):\n${JSON.stringify(filteredData.slice(0, 20), null, 2)}\n\n`
       }
 
       const systemMessage = {
