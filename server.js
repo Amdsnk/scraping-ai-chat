@@ -1,152 +1,104 @@
-import express from "express";
-import { createClient } from "@supabase/supabase-js";
-import dotenv from "dotenv";
-import cors from "cors";
-import OpenAI from "openai";
-import fetch from "node-fetch";
-import AbortController from "abort-controller";
+import express from "express"
+import cors from "cors"
+import { createClient } from "@supabase/supabase-js"
+import OpenAI from "openai"
+import dotenv from "dotenv"
 
-// ✅ Load environment variables
-dotenv.config();
+dotenv.config()
 
-const app = express();
-const port = process.env.PORT || 8080; // Railway uses port 8080
+const app = express()
+const PORT = process.env.PORT || 8080
 
-app.use(express.json());
+// Initialize Supabase client
+const supabaseUrl = process.env.SUPABASE_URL
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+const supabase = createClient(supabaseUrl, supabaseKey)
+console.log("✅ Supabase client initialized successfully")
 
-// ✅ Utility logger
-const log = (message, ...args) => {
-  console.log(`[${new Date().toISOString()}] ${message}`, ...args);
-};
+// Initialize OpenAI client
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+})
+console.log("✅ OpenAI client initialized successfully")
 
-log("🔍 Environment variables loaded");
+// Middleware
+app.use(express.json())
+app.use(
+  cors({
+    origin: ["https://scraping-ai-chat.vercel.app", "http://localhost:3000"],
+    methods: ["GET", "POST"],
+    credentials: true,
+  }),
+)
 
-// ✅ CORS Configuration
-const allowedOrigins = [
-  "https://scraping-ai-chat.vercel.app",
-  "http://localhost:3000", // ✅ Allow local development
-];
-
-const corsOptions = {
-  origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin) || /\.vercel\.app$/.test(origin)) {
-      callback(null, true);
-    } else {
-      log("⛔ Blocked by CORS:", origin);
-      callback(new Error("Not allowed by CORS"));
-    }
-  },
-  methods: ["GET", "POST", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
-  credentials: true,
-  optionsSuccessStatus: 204,
-};
-
-app.use(cors(corsOptions));
-app.use(express.json({ limit: "10mb" }));
-
-// ✅ Initialize Supabase
-let supabase;
-if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
-  supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
-  log("✅ Supabase client initialized successfully");
-} else {
-  console.error("❌ Supabase environment variables are missing.");
-}
-
-// ✅ Initialize OpenAI
-let openai;
-if (process.env.OPENAI_API_KEY) {
-  openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-  log("✅ OpenAI client initialized successfully");
-} else {
-  console.error("❌ OpenAI API key is missing.");
-}
-
-// ✅ Middleware for logging requests
-app.use((req, res, next) => {
-  log(`📩 Request received: ${req.method} ${req.url}`, {
+// Health check endpoint
+app.get("/health", (req, res) => {
+  console.log("📩 Request received: GET /health", {
     origin: req.headers.origin,
     "user-agent": req.headers["user-agent"],
-  });
-  next();
-});
+  })
+  res.status(200).json({ status: "ok" })
+})
 
-// ✅ Health check endpoint
-app.get("/health", (req, res) => {
-  res.status(200).json({ status: "OK", timestamp: new Date().toISOString() });
-});
-
-// ✅ Default API Response
-app.get("/", (req, res) => {
-  res.json({
-    message: "Welcome to the AI Web Scraping Chat API",
-    endpoints: { chat: "/api/chat", health: "/health" },
-    version: "1.0.0",
-    status: "online",
-  });
-});
-
-// ✅ Chat API Route
+// Chat endpoint - FIXED to handle the request directly instead of proxying
 app.post("/api/chat", async (req, res) => {
+  console.log("📩 Request received: POST /api/chat", {
+    origin: req.headers.origin,
+    "user-agent": req.headers["user-agent"],
+  })
+
   try {
-    if (!process.env.API_URL) {
-      throw new Error("API_URL is missing in environment variables.");
+    const { messages, urls } = req.body
+
+    if (!messages || !Array.isArray(messages)) {
+      return res.status(400).json({ error: "Invalid request. Messages array is required." })
     }
 
-    const apiBaseUrl = process.env.API_URL.replace(/^https:/, "http:");
-    const proxyUrl = `${apiBaseUrl}/api/chat`;
-    log("🔍 Proxying request to:", proxyUrl);
+    // Process the chat request directly here
+    // Fetch data from Supabase if needed
+    let contextData = []
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10000); // 10 seconds timeout
+    if (urls && urls.length > 0) {
+      const { data, error } = await supabase.from("scraped_content").select("*").in("url", urls)
 
-    const nextResponse = await fetch(proxyUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "User-Agent": "node-fetch",
-        ...(req.headers.authorization && { Authorization: req.headers.authorization }),
-      },
-      body: JSON.stringify(req.body),
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeout); // Clear timeout if request succeeds
-
-    if (!nextResponse.ok) {
-      const errorText = await nextResponse.text();
-      log(`❌ Upstream error: ${nextResponse.status} - ${errorText}`);
-      return res.status(nextResponse.status).json({ error: "Upstream error", details: errorText });
+      if (error) {
+        console.error("❌ Supabase error:", error)
+      } else if (data) {
+        contextData = data
+      }
     }
 
-    const data = await nextResponse.json();
-    log("📩 Response from Next.js API:", data);
-    return res.status(200).json(data);
+    // Format context for OpenAI
+    const context = contextData.map((item) => `URL: ${item.url}\nContent: ${item.content}`).join("\n\n")
 
+    // Prepare system message with context
+    const systemMessage = {
+      role: "system",
+      content: `You are an AI assistant that helps users understand web content. ${
+        context
+          ? `Here is the content from the URLs provided:\n\n${context}`
+          : "No specific web content has been provided."
+      }`,
+    }
+
+    // Call OpenAI API
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [systemMessage, ...messages],
+      stream: false,
+    })
+
+    res.json(completion.choices[0].message)
   } catch (error) {
-    log("❌ Proxy error:", error);
-    return res.status(500).json({ error: "Internal server error", details: error.message });
+    console.error("❌ Error processing chat request:", error)
+    res.status(500).json({
+      error: "An error occurred while processing your request",
+      details: error.message,
+    })
   }
-});
+})
 
-// ✅ 404 handler
-app.use((req, res) => {
-  log("⚠️ 404 - Not Found:", req.originalUrl);
-  res.status(404).json({ error: "Not Found", message: "The requested resource does not exist." });
-});
-
-// ✅ Start server
-app.listen(port, "0.0.0.0", () => {
-  log(`🚀 Server is running on http://0.0.0.0:${port}`);
-});
-
-// ✅ Graceful error handling
-process.on("uncaughtException", (error) => {
-  console.error("❌ Uncaught Exception:", error);
-  process.exit(1);
-});
-
-process.on("unhandledRejection", (reason, promise) => {
-  console.error("⚠️ Unhandled Rejection at:", promise, "reason:", reason);
-});
+// Start server
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`🚀 Server is running on http://0.0.0.0:${PORT}`)
+})
