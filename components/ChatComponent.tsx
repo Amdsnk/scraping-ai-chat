@@ -53,8 +53,14 @@ export function ChatComponent() {
       setCooldown(20) // Set a 20-second cooldown between requests
     } catch (error) {
       console.error("Error sending message:", error)
+      if (error instanceof Error) {
       setError(error.message)
       setMessages((prevMessages) => [...prevMessages, { role: "assistant", content: error.message }])
+    } else {
+      setError("An unknown error occurred")
+      setMessages((prevMessages) => [...prevMessages, { role: "assistant", content: "An unknown error occurred" }])
+  }
+
     } finally {
       setIsLoading(false)
     }
