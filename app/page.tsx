@@ -57,6 +57,12 @@ export default function ChatInterface() {
         input.toLowerCase().includes("more results") ||
         (input.toLowerCase().includes("page") && /\d+/.test(input))
 
+      // Check for page range requests (e.g., "page 1 to 2" or "pages 1-3")
+      const pageRangeMatch = input.match(/page[s]?\s+(\d+)\s*(?:to|-)\s*(\d+)/i)
+      const pageRange = pageRangeMatch
+        ? { start: Number.parseInt(pageRangeMatch[1]), end: Number.parseInt(pageRangeMatch[2]) }
+        : null
+
       let currentResults = results // Store current results
 
       // Handle scraping if needed
@@ -75,6 +81,7 @@ export default function ChatInterface() {
           body: JSON.stringify({
             url: urls[0] || undefined,
             pagination: isPaginationRequest,
+            pageRange: pageRange,
             sessionId,
           }),
         })
@@ -189,7 +196,7 @@ export default function ChatInterface() {
                 <Input
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
-                  placeholder="Type your message..."
+                  placeholder="Type your message or 'scrape page 1 to 3 from URL'..."
                   disabled={isLoading}
                   className="flex-1"
                 />
@@ -231,7 +238,7 @@ export default function ChatInterface() {
                           ))}
                         </TableBody>
                       </Table>
-                      <div className="mt-4 flex justify-center">
+                      <div className="mt-4 flex flex-col items-center space-y-2">
                         <Button
                           variant="outline"
                           onClick={() => {
@@ -242,6 +249,9 @@ export default function ChatInterface() {
                         >
                           Load More Results
                         </Button>
+                        <p className="text-xs text-muted-foreground">
+                          Tip: You can also request specific pages with "scrape page X to Y from URL"
+                        </p>
                       </div>
                     </>
                   ) : (
