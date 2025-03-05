@@ -34,10 +34,11 @@ export default function ChatInterface() {
   const [results, setResults] = useState<BreederData[]>([])
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const [error, setError] = useState<string | null>(null)
+  const [scrapeProgress, setScrapeProgress] = useState<string | null>(null)
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [])
+  }, [messages])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -48,6 +49,7 @@ export default function ChatInterface() {
     setInput("")
     setIsLoading(true)
     setError(null)
+    setScrapeProgress(null)
 
     try {
       const urlRegex = /(https?:\/\/[^\s]+)/g
@@ -58,12 +60,32 @@ export default function ChatInterface() {
         (input.toLowerCase().includes("page") && /\d+/.test(input))
 
       // Check for page range requests (e.g., "page 1 to 2" or "pages 1-3")
-      const pageRangeMatch = input.match(/page[s]?\s+(\d+)\s*(?:to|-)\s*(\d+)/i)
+      const pageRangeMatch = input.match(/page[s]?\s+(\d+)\s*(?:to|-|through|until|and)\s*(\d+)/i)
       const pageRange = pageRangeMatch
         ? { start: Number.parseInt(pageRangeMatch[1]), end: Number.parseInt(pageRangeMatch[2]) }
         : null
 
       let currentResults = results // Store current results
+
+      // Add temporary message for scraping status
+      if (urls.length > 0 || isPaginationRequest || pageRange) {
+        const targetMsg = pageRange
+          ? `Scraping pages ${pageRange.start} to ${pageRange.end}...`
+          : isPaginationRequest
+            ? "Getting next page of results..."
+            : "Scraping data from URL..."
+
+        setScrapeProgress(targetMsg)
+
+        // Add a temporary message
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: `I'm processing your request. ${targetMsg}`,
+          },
+        ])
+      }
 
       // Handle scraping if needed
       if (
@@ -106,6 +128,13 @@ export default function ChatInterface() {
             console.log("Sending follow-up analysis request with scraped data")
             const analysisMessage = "Analyze the data you just scraped"
 
+            // Remove the temporary message
+            setMessages((prev) => {
+              const updatedMessages = [...prev]
+              updatedMessages.pop() // Remove the last message
+              return updatedMessages
+            })
+
             const analysisResponse = await fetch(`${API_URL}/api/chat`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -121,14 +150,14 @@ export default function ChatInterface() {
             if (analysisResponse.ok) {
               const analysisData = await analysisResponse.json()
               if (!analysisData.error) {
-                // Replace the initial "will scrape" message with the analysis
-                setMessages((prev) => {
-                  // Remove the last message (which is the "will scrape" placeholder)
-                  const updatedMessages = [...prev]
-                  updatedMessages.pop()
-                  // Add the analysis response
-                  return [...updatedMessages, { role: "assistant", content: analysisData.content }]
-                })
+                // Add the analysis response
+                setMessages((prev) => [
+                  ...prev,
+                  {
+                    role: "assistant",
+                    content: analysisData.content,
+                  },
+                ])
 
                 if (analysisData.sessionId) {
                   setSessionId(analysisData.sessionId)
@@ -136,11 +165,18 @@ export default function ChatInterface() {
 
                 // We've already handled the response, so return early
                 setIsLoading(false)
+                setScrapeProgress(null)
                 return
               }
             }
           }
         } else if (scrapeData.error) {
+          // Remove the temporary message
+          setMessages((prev) => {
+            const updatedMessages = [...prev]
+            updatedMessages.pop() // Remove the last message
+            return updatedMessages
+          })
           throw new Error(scrapeData.error)
         }
 
@@ -155,6 +191,15 @@ export default function ChatInterface() {
         sessionId,
         scrapedData: currentResults,
       })
+
+      // Remove the temporary message if it exists
+      if (scrapeProgress) {
+        setMessages((prev) => {
+          const updatedMessages = [...prev]
+          updatedMessages.pop() // Remove the last message
+          return updatedMessages
+        })
+      }
 
       const response = await fetch(`${API_URL}/api/chat`, {
         method: "POST",
@@ -193,8 +238,15 @@ export default function ChatInterface() {
       ])
     } finally {
       setIsLoading(false)
+      setScrapeProgress(null)
     }
   }
+
+  useEffect(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" })
+    }
+  }, [messages.length])
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50 p-4">
@@ -241,7 +293,7 @@ export default function ChatInterface() {
                 <Input
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
-                  placeholder="Try: From the URL, get breeder's data from page 1 to 3..."
+                  placeholder="Try: From the URL, get breeder's data from page 1 to 2..."
                   disabled={isLoading}
                   className="flex-1"
                 />
@@ -254,7 +306,7 @@ export default function ChatInterface() {
 
           <Card className="md:col-span-1 flex flex-col">
             <CardHeader>
-              <CardTitle>Scraped Data</CardTitle>
+              <CardTitle>Scraped Data {results.length > 0 && `(${results.length} items)`}</CardTitle>
             </CardHeader>
             <CardContent className="flex-1 overflow-hidden">
               <Tabs defaultValue="table">
