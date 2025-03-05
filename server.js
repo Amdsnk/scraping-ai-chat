@@ -6,6 +6,7 @@ import dotenv from "dotenv"
 import rateLimit from "express-rate-limit"
 import fetch from "node-fetch"
 import * as cheerio from "cheerio"
+import { v4 as uuidv4 } from "uuid"
 
 dotenv.config()
 
@@ -23,6 +24,9 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 })
 console.log("✅ OpenAI client initialized successfully")
+
+// In-memory session storage (replace with a database in production)
+const sessions = new Map()
 
 // Rate limiting middleware
 const apiLimiter = rateLimit({
@@ -62,6 +66,15 @@ app.get("/health", (req, res) => {
   res.status(200).json({ status: "ok" })
 })
 
+// Helper function to filter data
+function filterData(data, filterCriteria) {
+  return data.filter((item) => {
+    return Object.entries(filterCriteria).every(([key, value]) => {
+      return item[key].toLowerCase().includes(value.toLowerCase())
+    })
+  })
+}
+
 // Chat endpoint - handle both GET and POST
 app.all("/api/chat", async (req, res) => {
   if (req.method === "GET") {
@@ -70,53 +83,51 @@ app.all("/api/chat", async (req, res) => {
     try {
       console.log("Received request body:", JSON.stringify(req.body, null, 2))
 
-      let messages
-      if (req.body.message) {
-        messages = [{ role: "user", content: req.body.message }]
-      } else if (req.body.messages && Array.isArray(req.body.messages)) {
-        messages = req.body.messages
-      } else {
-        return res.status(400).json({
-          error: "Invalid request. Either a message string or messages array is required.",
-          receivedBody: req.body,
-        })
+      let { message, sessionId } = req.body
+
+      // Create a new session if it doesn't exist
+      if (!sessionId || !sessions.has(sessionId)) {
+        sessionId = uuidv4()
+        sessions.set(sessionId, { messages: [], scrapedData: null })
       }
 
-      const urls = req.body.urls || []
+      const session = sessions.get(sessionId)
 
-      // Process the chat request
-      let contextData = []
-
-      if (urls.length > 0) {
-        const { data, error } = await supabase.from("scraped_content").select("*").in("url", urls)
-        if (error) {
-          console.error("❌ Supabase error:", error)
-        } else if (data) {
-          contextData = data
-        }
-      }
+      // Add user message to session
+      session.messages.push({ role: "user", content: message })
 
       let scrapedDataContext = ""
-      if (contextData.length > 0) {
-        const scrapedContent = JSON.parse(contextData[0].content)
-        scrapedDataContext = `Scraped data from ${urls[0]}:\n${JSON.stringify(scrapedContent, null, 2)}\n\n`
+      if (session.scrapedData) {
+        scrapedDataContext = `Previously scraped data:\n${JSON.stringify(session.scrapedData, null, 2)}\n\n`
+      }
+
+      // Check if the message contains a filtering request
+      const filterMatch = message.match(/filter\s+data\s+that\s+have\s+(\w+)\s+(\w+.*)/i)
+      if (filterMatch && session.scrapedData) {
+        const [, filterKey, filterValue] = filterMatch
+        const filteredData = filterData(session.scrapedData, { [filterKey.toLowerCase()]: filterValue })
+        scrapedDataContext = `Filtered data:\n${JSON.stringify(filteredData, null, 2)}\n\n`
       }
 
       const systemMessage = {
         role: "system",
-        content: `You are an AI assistant that helps users understand web content. You have access to scraped data from the provided URL. 
+        content: `You are an AI assistant that helps users understand web content and filter scraped data. 
         ${scrapedDataContext}
-        When answering questions, use the scraped data provided above. If the user asks about information from the URL, refer to this data directly.
-        If you don't have specific information, you can say so, but don't claim you can't access the URL - the data has already been scraped for you.`,
+        When answering questions, use the scraped or filtered data provided above. If the user asks to filter data, explain the filtering process and results.
+        If you don't have specific information, you can say so, but don't claim you can't access the data - it has already been provided to you.`,
       }
 
       try {
         const completion = await openai.chat.completions.create({
           model: "gpt-4o-mini",
-          messages: [systemMessage, ...messages],
+          messages: [systemMessage, ...session.messages],
           stream: false,
         })
-        res.json(completion.choices[0].message)
+
+        const aiResponse = completion.choices[0].message
+        session.messages.push(aiResponse)
+
+        res.json({ ...aiResponse, sessionId })
       } catch (openaiError) {
         console.error("OpenAI API Error:", openaiError)
 
@@ -149,7 +160,7 @@ app.all("/api/chat", async (req, res) => {
 app.post("/api/scrape", async (req, res) => {
   try {
     console.log("Received scrape request:", req.body)
-    const { url } = req.body
+    const { url, sessionId } = req.body
 
     if (!url) {
       return res.status(400).json({ error: "URL is required" })
@@ -167,50 +178,53 @@ app.post("/api/scrape", async (req, res) => {
       return res.status(500).json({ error: "Database error", details: dbError })
     }
 
+    let scrapedData
     if (existingData) {
       console.log("✅ Found existing data for URL:", url)
-      return res.json({
-        message: "Data retrieved from database",
-        results: JSON.parse(existingData.content),
-        fromCache: true,
+      scrapedData = JSON.parse(existingData.content)
+    } else {
+      // If not in database, scrape the URL
+      console.log("🔍 Scraping URL:", url)
+      const response = await fetch(url)
+      const html = await response.text()
+
+      // Parse the HTML and extract breeder information
+      const $ = cheerio.load(html)
+      scrapedData = []
+
+      $("table tr").each((index, element) => {
+        if (index === 0) return // Skip header row
+
+        const columns = $(element).find("td")
+        if (columns.length >= 3) {
+          scrapedData.push({
+            name: $(columns[0]).text().trim(),
+            phone: $(columns[1]).text().trim(),
+            location: $(columns[2]).text().trim(),
+          })
+        }
       })
+
+      // Store the scraped content in the database
+      const { error: insertError } = await supabase
+        .from("scraped_content")
+        .insert([{ url, content: JSON.stringify(scrapedData), scraped_at: new Date().toISOString() }])
+
+      if (insertError) {
+        console.error("❌ Error storing scraped content:", insertError)
+      }
     }
 
-    // If not in database, scrape the URL
-    console.log("🔍 Scraping URL:", url)
-    const response = await fetch(url)
-    const html = await response.text()
-
-    // Parse the HTML and extract breeder information
-    const $ = cheerio.load(html)
-    const breeders = []
-
-    $("table tr").each((index, element) => {
-      if (index === 0) return // Skip header row
-
-      const columns = $(element).find("td")
-      if (columns.length >= 3) {
-        breeders.push({
-          name: $(columns[0]).text().trim(),
-          phone: $(columns[1]).text().trim(),
-          location: $(columns[2]).text().trim(),
-        })
-      }
-    })
-
-    // Store the scraped content in the database
-    const { error: insertError } = await supabase
-      .from("scraped_content")
-      .insert([{ url, content: JSON.stringify(breeders), scraped_at: new Date().toISOString() }])
-
-    if (insertError) {
-      console.error("❌ Error storing scraped content:", insertError)
+    // Update session with scraped data
+    if (sessionId && sessions.has(sessionId)) {
+      const session = sessions.get(sessionId)
+      session.scrapedData = scrapedData
     }
 
     return res.json({
       message: "URL scraped successfully",
-      results: breeders,
-      fromCache: false,
+      results: scrapedData,
+      sessionId,
     })
   } catch (error) {
     console.error("❌ Error processing scrape request:", error)
