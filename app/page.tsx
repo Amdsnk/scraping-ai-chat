@@ -39,7 +39,6 @@ export default function ChatInterface() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [])
 
-  // Update the handleSubmit function to better handle sessions and pagination
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!input.trim()) return
@@ -86,17 +85,7 @@ export default function ChatInterface() {
         const scrapeData = await scrapeResponse.json()
         console.log("Scrape response:", scrapeData)
         if (scrapeData.results && Array.isArray(scrapeData.results)) {
-          // Process data to replace empty values with '-'
-          const processedResults = scrapeData.results.map((item: any) => {
-            const processedItem = { ...item }
-            Object.keys(processedItem).forEach((key) => {
-              if (!processedItem[key] || processedItem[key].trim() === "") {
-                processedItem[key] = "-"
-              }
-            })
-            return processedItem
-          })
-          setResults(processedResults)
+          setResults(scrapeData.results)
         }
         if (scrapeData.sessionId) {
           setSessionId(scrapeData.sessionId)
@@ -106,7 +95,7 @@ export default function ChatInterface() {
       console.log("Sending request to API:", {
         message: userMessage.content,
         sessionId,
-        urls,
+        scrapedData: results,
       })
       const response = await fetch(`${API_URL}/api/chat`, {
         method: "POST",
@@ -114,7 +103,7 @@ export default function ChatInterface() {
         body: JSON.stringify({
           message: userMessage.content,
           sessionId,
-          urls,
+          scrapedData: results,
         }),
       })
 
