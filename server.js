@@ -86,10 +86,6 @@ app.get("/", (req, res) => {
 
 app.use("/api/chat", async (req, res) => {
   try {
-    if (!process.env.API_URL) {
-      throw new Error("API_URL is not defined in environment variables.");
-    }
-
     const proxyUrl = `${process.env.API_URL}/api/chat`;
 
     console.log("🔍 Proxying request to:", proxyUrl);
@@ -115,10 +111,10 @@ app.use("/api/chat", async (req, res) => {
     console.log("📩 Response from Next.js API:", data);
 
     // ✅ Send response to frontend
-    res.status(200).json(data);
+    return res.status(200).json(data);
   } catch (error) {
     console.error("❌ Proxy error:", error);
-    res.status(500).json({ error: "Internal server error", details: error.message });
+    return res.status(500).json({ error: "Internal server error", details: error.message });
   }
 });
 
