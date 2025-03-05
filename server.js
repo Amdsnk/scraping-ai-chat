@@ -5,7 +5,7 @@ import OpenAI from "openai"
 import dotenv from "dotenv"
 import rateLimit from "express-rate-limit"
 import fetch from "node-fetch"
-import cheerio from "cheerio"
+import * as cheerio from "cheerio"
 
 dotenv.config()
 
