@@ -34,12 +34,12 @@ const sessions = new Map<string, Session>()
 
 export async function POST(req: Request) {
   try {
-    const { message, sessionId } = await req.json()
-
-    if (!message) {
-      return NextResponse.json({ error: "Message is required" }, { status: 400 })
-    }
-
+    const body = await req.json();
+    return NextResponse.json({ message: "Chat API is working!", data: body });
+  } catch (error) {
+    return NextResponse.json({ error: "Something went wrong" }, { status: 500 });
+  }
+}
     // Get or create session
     let session: Session
     if (sessionId && sessions.has(sessionId)) {
