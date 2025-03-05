@@ -3,7 +3,7 @@ import { type NextRequest, NextResponse } from "next/server"
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { url, pagination, sessionId } = body
+    const { url, pagination, pageRange, sessionId } = body
 
     if (!url && !pagination) {
       return NextResponse.json({ error: "URL is required for initial scraping" }, { status: 400 })
@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ url, pagination, sessionId }),
+      body: JSON.stringify({ url, pagination, pageRange, sessionId }),
     })
 
     if (!response.ok) {
