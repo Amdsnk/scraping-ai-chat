@@ -75,6 +75,7 @@ export default function ChatInterface() {
           input.toLowerCase().includes("scrape") ||
           input.toLowerCase().includes("find"))
       ) {
+        console.log("Sending scrape request for URL:", urls[0])
         const scrapeResponse = await fetch(`/api/scrape`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -82,7 +83,9 @@ export default function ChatInterface() {
         })
 
         if (!scrapeResponse.ok) {
-          throw new Error(`Scraping failed: ${await scrapeResponse.text()}`)
+          const errorText = await scrapeResponse.text()
+          console.error("Scrape request failed:", errorText)
+          throw new Error(`Scraping failed: ${errorText}`)
         }
 
         const scrapeData = await scrapeResponse.json()
