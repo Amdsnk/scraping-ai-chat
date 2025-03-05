@@ -1,93 +1,102 @@
-"use client";
+"use client"
 
-import { useState, useRef, useEffect } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Send, Loader2 } from "lucide-react";
+import type React from "react"
+
+import { useState, useRef, useEffect } from "react"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Send, Loader2 } from "lucide-react"
 
 type Message = {
-  role: "user" | "assistant";
-  content: string;
-};
+  role: "user" | "assistant"
+  content: string
+}
 
 type BreederData = {
-  name: string;
-  phone: string;
-  location: string;
-};
+  name: string
+  phone: string
+  location: string
+}
 
 const API_URL =
-  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ||
-  "https://scraping-ai-chat-production.up.railway.app"; // Default fallback
+  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "https://scraping-ai-chat-production.up.railway.app" // Default fallback
 
 async function sendMessage(message: string) {
   const res = await fetch(`${API_URL}/api/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ message }),
-  });
+  })
 
   if (!res.ok) {
-    console.error("API error:", await res.text());
-    throw new Error("Failed to fetch response from API");
+    console.error("API error:", await res.text())
+    throw new Error("Failed to fetch response from API")
   }
 
-  return res.json();
+  return res.json()
 }
 
 export default function ChatInterface() {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [sessionId, setSessionId] = useState<string | null>(null);
-  const [results, setResults] = useState<BreederData[]>([]);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [messages, setMessages] = useState<Message[]>([])
+  const [input, setInput] = useState("")
+  const [isLoading, setIsLoading] = useState(false)
+  const [sessionId, setSessionId] = useState<string | null>(null)
+  const [results, setResults] = useState<BreederData[]>([])
+  const messagesEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, []);
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!input.trim()) return;
+    e.preventDefault()
+    if (!input.trim()) return
 
-    const userMessage = { role: "user" as const, content: input };
-    setMessages((prev) => [...prev, userMessage]);
-    setInput("");
-    setIsLoading(true);
+    // Extract URLs from the input
+    const urlRegex = /(https?:\/\/[^\s]+)/g
+    const urls = input.match(urlRegex) || []
+
+    const userMessage = { role: "user" as const, content: input }
+    setMessages((prev) => [...prev, userMessage])
+    setInput("")
+    setIsLoading(true)
 
     try {
       const response = await fetch(`${API_URL}/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: userMessage.content, sessionId }),
-      });
+        body: JSON.stringify({
+          message: userMessage.content,
+          urls: urls,
+          sessionId,
+        }),
+      })
 
       if (!response.ok) {
-        throw new Error(`Failed to send message: ${response.status}`);
+        throw new Error(`Failed to send message: ${response.status}`)
       }
 
-      const data = await response.json();
-      setMessages((prev) => [...prev, { role: "assistant", content: data.content }]);
-      setSessionId(data.sessionId);
-
-      if (data.results && Array.isArray(data.results)) {
-        setResults(data.results);
-      }
-    } catch (error) {
-      console.error("Error sending message:", error);
+      const data = await response.json()
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", content: "Sorry, there was an error. Please try again." },
-      ]);
+        { role: "assistant", content: data.content || data.text || "No response from AI" },
+      ])
+      setSessionId(data.sessionId)
+
+      if (data.results && Array.isArray(data.results)) {
+        setResults(data.results)
+      }
+    } catch (error) {
+      console.error("Error sending message:", error)
+      setMessages((prev) => [...prev, { role: "assistant", content: "Sorry, there was an error. Please try again." }])
     } finally {
-      setIsLoading(false);
+      setIsLoading(false)
     }
-  };
+  }
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50 p-4">
@@ -110,7 +119,9 @@ export default function ChatInterface() {
                   ) : (
                     messages.map((message, index) => (
                       <div key={index} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
-                        <div className={`max-w-[80%] rounded-lg px-4 py-2 ${message.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted"}`}>
+                        <div
+                          className={`max-w-[80%] rounded-lg px-4 py-2 ${message.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted"}`}
+                        >
                           <p className="whitespace-pre-wrap">{message.content}</p>
                         </div>
                       </div>
@@ -122,7 +133,13 @@ export default function ChatInterface() {
             </CardContent>
             <CardFooter>
               <form onSubmit={handleSubmit} className="flex w-full space-x-2">
-                <Input value={input} onChange={(e) => setInput(e.target.value)} placeholder="Type your message..." disabled={isLoading} className="flex-1" />
+                <Input
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  placeholder="Type your message..."
+                  disabled={isLoading}
+                  className="flex-1"
+                />
                 <Button type="submit" disabled={isLoading || !input.trim()}>
                   {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                 </Button>
@@ -169,7 +186,9 @@ export default function ChatInterface() {
                 </TabsContent>
                 <TabsContent value="json" className="h-[60vh]">
                   <ScrollArea className="h-full">
-                    <pre className="text-xs p-4 bg-muted rounded-md">{results.length > 0 ? JSON.stringify(results, null, 2) : "No data available yet."}</pre>
+                    <pre className="text-xs p-4 bg-muted rounded-md">
+                      {results.length > 0 ? JSON.stringify(results, null, 2) : "No data available yet."}
+                    </pre>
                   </ScrollArea>
                 </TabsContent>
               </Tabs>
@@ -183,5 +202,5 @@ export default function ChatInterface() {
         </div>
       </div>
     </div>
-  );
+  )
 }
