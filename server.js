@@ -141,127 +141,127 @@ async function scrapePageData(url, pageNum) {
 // Update the scrape endpoint to handle interactive pages
 app.post("/api/scrape", async (req, res) => {
   try {
-    console.log("Received scrape request:", req.body);
-    const { url, pagination, pageRange, sessionId } = req.body;
+    console.log("Received scrape request:", req.body)
+    const { url, pagination, pageRange, sessionId } = req.body
 
     // Get or create session
-    let session;
-    let newSessionId = sessionId;
+    let session
+    let newSessionId = sessionId
     if (sessionId && sessions.has(sessionId)) {
-      session = sessions.get(sessionId);
+      session = sessions.get(sessionId)
     } else {
-      newSessionId = uuidv4();
-      session = { messages: [], scrapedData: null, currentPage: 1, lastUrl: null, allScrapedData: [] };
-      sessions.set(newSessionId, session);
+      newSessionId = uuidv4()
+      session = { messages: [], scrapedData: null, currentPage: 1, lastUrl: null, allScrapedData: [] }
+      sessions.set(newSessionId, session)
     }
 
     // Store the URL in the session
-    const targetUrl = url || session.lastUrl;
+    const targetUrl = url || session.lastUrl
     if (targetUrl) {
-      session.lastUrl = targetUrl;
+      session.lastUrl = targetUrl
     } else {
       return res.status(400).json({
-        error: "No URL provided and no previous URL in session"
-      });
+        error: "No URL provided and no previous URL in session",
+      })
     }
 
     // Initialize or reset scraped data arrays
-    let scrapedResults = [];
+    let scrapedResults = []
 
     // Handle page range scraping
     if (pageRange && pageRange.start && pageRange.end) {
-      console.log(`🔍 Scraping pages ${pageRange.start} to ${pageRange.end}`);
+      console.log(`🔍 Scraping pages ${pageRange.start} to ${pageRange.end}`)
 
       // Validate page range
       if (pageRange.start < 1) {
-        pageRange.start = 1;
+        pageRange.start = 1
       }
-      
+
       if (pageRange.end < pageRange.start) {
-        pageRange.end = pageRange.start;
+        pageRange.end = pageRange.start
       }
-      
+
       if (pageRange.end - pageRange.start > 5) {
         // Limit to reasonable range to prevent abuse
-        pageRange.end = pageRange.start + 5;
+        pageRange.end = pageRange.start + 5
       }
 
       // Reset accumulated data for new range request
-      session.allScrapedData = [];
+      session.allScrapedData = []
 
       // Scrape each page in the range
       for (let page = pageRange.start; page <= pageRange.end; page++) {
-        const { data: pageData, hasMorePages } = await scrapePageData(targetUrl, page);
-        
+        const { data: pageData, hasMorePages } = await scrapePageData(targetUrl, page)
+
         if (pageData.length > 0) {
           // Add this page's data to the accumulated data
-          session.allScrapedData = [...session.allScrapedData, ...pageData];
-          
+          session.allScrapedData = [...session.allScrapedData, ...pageData]
+
           // Store the current page
-          session.currentPage = page;
-          
+          session.currentPage = page
+
           // If we've reached the end of available pages, break
           if (!hasMorePages && page < pageRange.end) {
-            console.log(`No more pages available after page ${page}`);
-            break;
+            console.log(`No more pages available after page ${page}`)
+            break
           }
         } else {
           // If no data on this page, we might have reached the end
-          console.log(`No data found on page ${page}, might be the last page`);
-          break;
+          console.log(`No data found on page ${page}, might be the last page`)
+          break
         }
-        
+
         // Add a small delay to avoid overwhelming the server
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise((resolve) => setTimeout(resolve, 500))
       }
-      
+
       // Set the scraped results to ONLY include data from the requested pages
-      scrapedResults = session.allScrapedData;
-      session.scrapedData = scrapedResults;
-    } 
+      scrapedResults = session.allScrapedData
+      session.scrapedData = scrapedResults
+    }
     // Handle single page or next page request
     else if (pagination) {
       // For pagination requests, increment the page number
-      session.currentPage = session.currentPage + 1;
-      const { data: pageData, hasMorePages } = await scrapePageData(targetUrl, session.currentPage);
-      
+      session.currentPage = session.currentPage + 1
+      const { data: pageData, hasMorePages } = await scrapePageData(targetUrl, session.currentPage)
+
       if (pageData.length > 0) {
         // For pagination, we want to add to existing data, not replace it
         if (!session.allScrapedData) {
-          session.allScrapedData = [];
+          session.allScrapedData = []
         }
-        session.allScrapedData = [...session.allScrapedData, ...pageData];
-        scrapedResults = session.allScrapedData;
-        session.scrapedData = scrapedResults;
+        session.allScrapedData = [...session.allScrapedData, ...pageData]
+        scrapedResults = session.allScrapedData
+        session.scrapedData = scrapedResults
       } else {
         return res.status(404).json({
-          error: `No more data found on page ${session.currentPage}. You might have reached the end of the results.`
-        });
+          error: `No more data found on page ${session.currentPage}. You might have reached the end of the results.`,
+        })
       }
     }
     // Initial request without pagination
     else {
       // For initial requests, just get page 1
-      session.currentPage = 1;
-      session.allScrapedData = []; // Reset accumulated data
-      const { data: pageData } = await scrapePageData(targetUrl, 1);
-      
+      session.currentPage = 1
+      session.allScrapedData = [] // Reset accumulated data
+      const { data: pageData } = await scrapePageData(targetUrl, 1)
+
       if (pageData.length > 0) {
-        session.allScrapedData = pageData;
-        scrapedResults = pageData;
-        session.scrapedData = scrapedResults;
+        session.allScrapedData = pageData
+        scrapedResults = pageData
+        session.scrapedData = scrapedResults
       } else {
         return res.status(404).json({
-          error: "No breeder information found on the provided URL. Please check the URL and try again."
-        });
+          error: "No breeder information found on the provided URL. Please check the URL and try again.",
+        })
       }
     }
 
     // If no data was found, return an error
     if (scrapedResults.length === 0) {
       return res.status(404).json({
-        error: "No breeder information found. Please check the URL and try again."
-      });
+        error: "No breeder information found. Please check the URL and try again.",
+      })
     }
 
     // Store the scraped content in the database
@@ -271,39 +271,39 @@ app.post("/api/scrape", async (req, res) => {
           url: targetUrl,
           content: JSON.stringify(scrapedResults),
           scraped_at: new Date().toISOString(),
-          page_count: pageRange ? (pageRange.end - pageRange.start + 1) : session.currentPage,
+          page_count: pageRange ? pageRange.end - pageRange.start + 1 : session.currentPage,
         },
-      ]);
+      ])
 
       if (upsertError) {
-        console.error("❌ Error storing scraped content:", upsertError);
+        console.error("❌ Error storing scraped content:", upsertError)
       }
     } catch (dbError) {
-      console.error("Database storage error:", dbError);
+      console.error("Database storage error:", dbError)
       // Continue even if database storage fails
     }
 
     return res.json({
-      message: pageRange 
-        ? `Pages ${pageRange.start} to ${pageRange.end} scraped successfully` 
+      message: pageRange
+        ? `Pages ${pageRange.start} to ${pageRange.end} scraped successfully`
         : `Page ${session.currentPage} scraped successfully`,
       results: scrapedResults,
       sessionId: newSessionId,
       pageRange: pageRange,
       page: session.currentPage,
-      totalItems: scrapedResults.length
-    });
+      totalItems: scrapedResults.length,
+    })
   } catch (error) {
-    console.error("❌ Error processing scrape request:", error);
+    console.error("❌ Error processing scrape request:", error)
     res.status(500).json({
       error: "An error occurred while processing your request",
       details: error.message,
-    });
+    })
   }
-}
+})
 
 // Update the chat endpoint to better handle sessions and data
-app.all(\"/api/chat", async (req, res) => {
+app.all("/api/chat", async (req, res) => {
   if (req.method === "GET") {
     return res.status(200).json({ message: "Chat API is ready" })
   } else if (req.method === "POST") {
