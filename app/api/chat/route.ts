@@ -20,6 +20,32 @@ export async function POST(request: NextRequest) {
       ),
     )
 
+    // Check if we need to scrape first
+    const urls = body.urls || []
+    if (
+      urls.length > 0 &&
+      (body.message.toLowerCase().includes("get") ||
+        body.message.toLowerCase().includes("extract") ||
+        body.message.toLowerCase().includes("scrape") ||
+        body.message.toLowerCase().includes("find"))
+    ) {
+      try {
+        // Try to scrape the URL first
+        await fetch(`${backendUrl}/api/scrape`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ url: urls[0] }),
+        })
+        // We don't need to wait for the response here as the backend will store it
+        // and use it in the chat response
+      } catch (scrapeError) {
+        console.error("Error pre-scraping URL:", scrapeError)
+        // Continue with the chat request even if scraping fails
+      }
+    }
+
     // Make a direct request to the backend
     const response = await fetch(`${backendUrl}/api/chat`, {
       method: "POST",
@@ -43,10 +69,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(data)
   } catch (error: unknown) {
     console.error("Error in chat route:", error)
-    return NextResponse.json(
-      { error: "Internal server error", message: error instanceof Error ? error.message : "Unknown error" },
-      { status: 500 },
-    )
+    let errorMessage = "Internal server error"
+    let errorDetails = {}
+
+    if (error instanceof Error) {
+      errorMessage = error.message
+      errorDetails = { name: error.name, stack: error.stack }
+    }
+
+    return NextResponse.json({ error: errorMessage, details: errorDetails }, { status: 500 })
   }
 }
-
