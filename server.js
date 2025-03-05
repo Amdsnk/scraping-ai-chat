@@ -244,7 +244,7 @@ app.all("/api/chat", async (req, res) => {
     try {
       console.log("Received request body:", JSON.stringify(req.body, null, 2))
 
-      let { message, sessionId, scrapedData } = req.body
+      let { message, sessionId, scrapedData, isFollowUp, originalQuery } = req.body
 
       // Create a new session if it doesn't exist
       if (!sessionId || !sessions.has(sessionId)) {
@@ -257,6 +257,12 @@ app.all("/api/chat", async (req, res) => {
       // Update session with the latest scraped data
       if (scrapedData && Array.isArray(scrapedData)) {
         session.scrapedData = scrapedData
+      }
+
+      // For follow-up requests, use the original query for better context
+      if (isFollowUp && originalQuery) {
+        console.log("Follow-up analysis request for original query:", originalQuery)
+        message = originalQuery
       }
 
       // Add user message to session
@@ -275,7 +281,11 @@ app.all("/api/chat", async (req, res) => {
           return processedItem
         })
 
-        scrapedDataContext = `You have access to the following scraped data (${processedData.length} items). DO NOT say you don't have access to this data:\n${JSON.stringify(processedData.slice(0, 20), null, 2)}\n\n`
+        scrapedDataContext = `You have access to the following scraped data (${processedData.length} items). DO NOT say you don't have access to this data or that you will analyze it in the next response - provide a complete analysis now:\n${JSON.stringify(processedData.slice(0, 20), null, 2)}\n\n`
+
+        if (processedData.length > 20) {
+          scrapedDataContext += `Note: This is a sample of the data. There are ${processedData.length} total items.\n\n`
+        }
 
         // Add a summary of the data
         scrapedDataContext += "Data summary:\n"
@@ -300,9 +310,23 @@ app.all("/api/chat", async (req, res) => {
         scrapedDataContext += `Filtered data (${filteredData.length} items):\n${JSON.stringify(filteredData, null, 2)}\n\n`
       }
 
-      const systemMessage = {
-        role: "system",
-        content: `You are an AI assistant that helps users understand web content and analyze scraped data. 
+      // Customize the system message for follow-up requests
+      let systemPrompt = ""
+      if (isFollowUp) {
+        systemPrompt = `You are an AI assistant that helps users analyze scraped data. 
+        ${scrapedDataContext}
+        
+        IMPORTANT: The user has just scraped this data and is waiting for your analysis. 
+        DO NOT say you will analyze the data in the next response. 
+        You MUST provide a complete analysis now based on their original query: "${originalQuery}".
+        
+        Your analysis should include:
+        1. A summary of what was scraped (number of items, types of data)
+        2. Key information extracted from the data
+        3. Sample entries that showcase the data
+        4. Suggestions for what the user might want to do with this data`
+      } else {
+        systemPrompt = `You are an AI assistant that helps users understand web content and analyze scraped data. 
         ${scrapedDataContext}
         Instructions:
         1. Always use the scraped or filtered data provided above when answering questions.
@@ -316,7 +340,12 @@ app.all("/api/chat", async (req, res) => {
         1. Acknowledge the user's request
         2. Provide a summary of the data or action taken
         3. Show specific examples or details from the data
-        4. Offer suggestions for further analysis or actions the user can take`,
+        4. Offer suggestions for further analysis or actions the user can take`
+      }
+
+      const systemMessage = {
+        role: "system",
+        content: systemPrompt,
       }
 
       try {
