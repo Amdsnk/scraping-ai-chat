@@ -96,15 +96,18 @@ app.all("/api/chat", async (req, res) => {
         }
       }
 
-      const context = contextData.map((item) => `URL: ${item.url}\nContent: ${item.content}`).join("\n\n")
+      let scrapedDataContext = ""
+      if (contextData.length > 0) {
+        const scrapedContent = JSON.parse(contextData[0].content)
+        scrapedDataContext = `Scraped data from ${urls[0]}:\n${JSON.stringify(scrapedContent, null, 2)}\n\n`
+      }
 
       const systemMessage = {
         role: "system",
-        content: `You are an AI assistant that helps users understand web content. ${
-          context
-            ? `Here is the content from the URLs provided:\n\n${context}`
-            : "No specific web content has been provided."
-        }`,
+        content: `You are an AI assistant that helps users understand web content. You have access to scraped data from the provided URL. 
+        ${scrapedDataContext}
+        When answering questions, use the scraped data provided above. If the user asks about information from the URL, refer to this data directly.
+        If you don't have specific information, you can say so, but don't claim you can't access the URL - the data has already been scraped for you.`,
       }
 
       try {
