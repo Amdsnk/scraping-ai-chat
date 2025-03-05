@@ -72,9 +72,13 @@ export default function ChatInterface() {
             input.toLowerCase().includes("extract") ||
             input.toLowerCase().includes("scrape") ||
             input.toLowerCase().includes("find"))) ||
-        isPaginationRequest
+        isPaginationRequest ||
+        pageRange
       ) {
-        console.log("Sending scrape request for:", isPaginationRequest ? "pagination" : urls[0])
+        console.log(
+          "Sending scrape request for:",
+          pageRange ? `pages ${pageRange.start}-${pageRange.end}` : isPaginationRequest ? "pagination" : urls[0],
+        )
         const scrapeResponse = await fetch(`${API_URL}/api/scrape`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -96,9 +100,50 @@ export default function ChatInterface() {
         if (scrapeData.results && Array.isArray(scrapeData.results)) {
           currentResults = scrapeData.results // Update current results
           setResults(currentResults)
+
+          // After successful scraping, send a follow-up request to analyze the data
+          if (currentResults.length > 0) {
+            console.log("Sending follow-up analysis request with scraped data")
+            const analysisMessage = "Analyze the data you just scraped"
+
+            const analysisResponse = await fetch(`${API_URL}/api/chat`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                message: analysisMessage,
+                sessionId: scrapeData.sessionId || sessionId,
+                scrapedData: currentResults,
+                isFollowUp: true,
+                originalQuery: userMessage.content,
+              }),
+            })
+
+            if (analysisResponse.ok) {
+              const analysisData = await analysisResponse.json()
+              if (!analysisData.error) {
+                // Replace the initial "will scrape" message with the analysis
+                setMessages((prev) => {
+                  // Remove the last message (which is the "will scrape" placeholder)
+                  const updatedMessages = [...prev]
+                  updatedMessages.pop()
+                  // Add the analysis response
+                  return [...updatedMessages, { role: "assistant", content: analysisData.content }]
+                })
+
+                if (analysisData.sessionId) {
+                  setSessionId(analysisData.sessionId)
+                }
+
+                // We've already handled the response, so return early
+                setIsLoading(false)
+                return
+              }
+            }
+          }
         } else if (scrapeData.error) {
           throw new Error(scrapeData.error)
         }
+
         if (scrapeData.sessionId) {
           setSessionId(scrapeData.sessionId)
         }
@@ -196,7 +241,7 @@ export default function ChatInterface() {
                 <Input
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
-                  placeholder="Type your message or 'scrape page 1 to 3 from URL'..."
+                  placeholder="Try: From the URL, get breeder's data from page 1 to 3..."
                   disabled={isLoading}
                   className="flex-1"
                 />
