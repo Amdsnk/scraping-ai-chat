@@ -8,8 +8,18 @@ import fetch from "node-fetch";
 // ✅ Load environment variables
 dotenv.config();
 
+import express from "express";
+
 const app = express();
-const port = process.env.PORT || 3000;
+app.use(express.json());
+
+app.post("/api/chat", (req, res) => {
+  res.json({ message: "Chat API working!", data: req.body });
+});
+
+app.listen(3001, () => {
+  console.log("Server running on port 3001");
+});
 
 // ✅ Utility logger
 const log = (message, ...args) => {
