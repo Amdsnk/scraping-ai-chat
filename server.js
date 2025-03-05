@@ -75,7 +75,7 @@ function filterData(data, filterCriteria) {
   })
 }
 
-// Update the scrape endpoint to support pagination
+// Update the scrape endpoint to handle interactive pages
 app.post("/api/scrape", async (req, res) => {
   try {
     console.log("Received scrape request:", req.body)
@@ -101,28 +101,62 @@ app.post("/api/scrape", async (req, res) => {
     const response = await fetch(scrapeUrl)
     const html = await response.text()
 
-    // Parse the HTML and extract breeder information
+    // Parse the HTML
     const $ = cheerio.load(html)
-    const newData = []
 
-    $("table tr").each((index, element) => {
-      if (index === 0) return // Skip header row
+    // Check if we're on the map page
+    if ($(".us-map").length > 0) {
+      // We're on the map page, so we need to get the state links
+      const stateLinks = []
+      $("path").each((index, element) => {
+        const stateId = $(element).attr("id")
+        const stateUrl = `${scrapeUrl}${stateId}/`
+        stateLinks.push(stateUrl)
+      })
 
-      const columns = $(element).find("td")
-      if (columns.length >= 3) {
-        newData.push({
-          name: $(columns[0]).text().trim() || "-",
-          phone: $(columns[1]).text().trim() || "-",
-          location: $(columns[2]).text().trim() || "-",
+      // For demonstration, let's scrape the first state link
+      if (stateLinks.length > 0) {
+        const stateResponse = await fetch(stateLinks[0])
+        const stateHtml = await stateResponse.text()
+        const state$ = cheerio.load(stateHtml)
+
+        // Now parse the state page for breeder information
+        const newData = []
+        state$("table tr").each((index, element) => {
+          if (index === 0) return // Skip header row
+
+          const columns = $(element).find("td")
+          if (columns.length >= 3) {
+            newData.push({
+              name: $(columns[0]).text().trim() || "-",
+              phone: $(columns[1]).text().trim() || "-",
+              location: $(columns[2]).text().trim() || "-",
+            })
+          }
         })
-      }
-    })
 
-    // Update session with scraped data
-    if (!session.scrapedData) {
-      session.scrapedData = []
+        session.scrapedData = newData
+      } else {
+        session.scrapedData = []
+      }
+    } else {
+      // If we're not on the map page, use the original scraping logic
+      const newData = []
+      $("table tr").each((index, element) => {
+        if (index === 0) return // Skip header row
+
+        const columns = $(element).find("td")
+        if (columns.length >= 3) {
+          newData.push({
+            name: $(columns[0]).text().trim() || "-",
+            phone: $(columns[1]).text().trim() || "-",
+            location: $(columns[2]).text().trim() || "-",
+          })
+        }
+      })
+
+      session.scrapedData = newData
     }
-    session.scrapedData = pagination ? [...session.scrapedData, ...newData] : newData
 
     // Store the scraped content in the database
     const { error: upsertError } = await supabase.from("scraped_content").upsert([
