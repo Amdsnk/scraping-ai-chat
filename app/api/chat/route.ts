@@ -15,7 +15,10 @@ export async function POST(request: NextRequest) {
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(body),
+      body: JSON.stringify({
+        messages: [{ role: "user", content: body.message }],
+        urls: body.urls || [],
+      }),
     })
 
     if (!response.ok) {
