@@ -26,75 +26,84 @@ app.use(express.json())
 app.use(
   cors({
     origin: ["https://scraping-ai-chat.vercel.app", "http://localhost:3000"],
-    methods: ["GET", "POST"],
+    methods: ["GET", "POST", "OPTIONS"],
     credentials: true,
   }),
 )
 
+// Logging middleware
+app.use((req, res, next) => {
+  console.log(`📩 ${req.method} ${req.path}`, {
+    body: req.method === "POST" ? JSON.stringify(req.body).substring(0, 100) + "..." : null,
+    headers: {
+      origin: req.headers.origin,
+      "content-type": req.headers["content-type"],
+      "user-agent": req.headers["user-agent"],
+    },
+  })
+  next()
+})
+
 // Health check endpoint
 app.get("/health", (req, res) => {
-  console.log("📩 Request received: GET /health", {
-    origin: req.headers.origin,
-    "user-agent": req.headers["user-agent"],
-  })
   res.status(200).json({ status: "ok" })
 })
 
-// Chat endpoint - FIXED to handle the request directly instead of proxying
-app.post("/api/chat", async (req, res) => {
-  console.log("📩 Request received: POST /api/chat", {
-    origin: req.headers.origin,
-    "user-agent": req.headers["user-agent"],
-  })
+// Chat endpoint - handle both GET and POST
+app.all("/api/chat", async (req, res) => {
+  if (req.method === "GET") {
+    return res.status(200).json({ message: "Chat API is ready" })
+  } else if (req.method === "POST") {
+    try {
+      const { messages, urls } = req.body
 
-  try {
-    const { messages, urls } = req.body
-
-    if (!messages || !Array.isArray(messages)) {
-      return res.status(400).json({ error: "Invalid request. Messages array is required." })
-    }
-
-    // Process the chat request directly here
-    // Fetch data from Supabase if needed
-    let contextData = []
-
-    if (urls && urls.length > 0) {
-      const { data, error } = await supabase.from("scraped_content").select("*").in("url", urls)
-
-      if (error) {
-        console.error("❌ Supabase error:", error)
-      } else if (data) {
-        contextData = data
+      if (!messages || !Array.isArray(messages)) {
+        return res.status(400).json({ error: "Invalid request. Messages array is required." })
       }
+
+      // Process the chat request
+      let contextData = []
+
+      if (urls && urls.length > 0) {
+        const { data, error } = await supabase.from("scraped_content").select("*").in("url", urls)
+
+        if (error) {
+          console.error("❌ Supabase error:", error)
+        } else if (data) {
+          contextData = data
+        }
+      }
+
+      // Format context for OpenAI
+      const context = contextData.map((item) => `URL: ${item.url}\nContent: ${item.content}`).join("\n\n")
+
+      // Prepare system message with context
+      const systemMessage = {
+        role: "system",
+        content: `You are an AI assistant that helps users understand web content. ${
+          context
+            ? `Here is the content from the URLs provided:\n\n${context}`
+            : "No specific web content has been provided."
+        }`,
+      }
+
+      // Call OpenAI API
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4",
+        messages: [systemMessage, ...messages],
+        stream: false,
+      })
+
+      res.json(completion.choices[0].message)
+    } catch (error) {
+      console.error("❌ Error processing chat request:", error)
+      res.status(500).json({
+        error: "An error occurred while processing your request",
+        details: error.message,
+      })
     }
-
-    // Format context for OpenAI
-    const context = contextData.map((item) => `URL: ${item.url}\nContent: ${item.content}`).join("\n\n")
-
-    // Prepare system message with context
-    const systemMessage = {
-      role: "system",
-      content: `You are an AI assistant that helps users understand web content. ${
-        context
-          ? `Here is the content from the URLs provided:\n\n${context}`
-          : "No specific web content has been provided."
-      }`,
-    }
-
-    // Call OpenAI API
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o",
-      messages: [systemMessage, ...messages],
-      stream: false,
-    })
-
-    res.json(completion.choices[0].message)
-  } catch (error) {
-    console.error("❌ Error processing chat request:", error)
-    res.status(500).json({
-      error: "An error occurred while processing your request",
-      details: error.message,
-    })
+  } else {
+    res.status(405).json({ error: "Method not allowed" })
   }
 })
 
