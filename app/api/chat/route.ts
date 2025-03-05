@@ -7,6 +7,8 @@ export async function POST(request: NextRequest) {
     // Get the backend URL from environment variables
     const backendUrl = process.env.API_URL || "https://scraping-ai-chat-production.up.railway.app"
 
+    console.log("Sending request to backend:", JSON.stringify(body, null, 2))
+
     // Make a direct request to the backend
     const response = await fetch(`${backendUrl}/api/chat`, {
       method: "POST",
