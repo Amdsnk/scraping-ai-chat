@@ -1,115 +1,31 @@
-import { NextResponse } from "next/server"
-import { OpenAIStream, StreamingTextResponse } from "ai"
-import OpenAI from "openai"
+import { type NextRequest, NextResponse } from "next/server"
 
-// Create OpenAI client
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY!,
-})
-
-// Define the BreederData type
-type BreederData = {
-  name: string
-  phone: string
-  location: string
-}
-
-// Mock data for preview purposes
-const mockBreeders: BreederData[] = [
-  { name: "John Smith", phone: "555-123-4567", location: "MOTT ND" },
-  { name: "Sarah Johnson", phone: "555-987-6543", location: "BISMARCK ND" },
-  // ... (rest of the mock data)
-]
-
-// Define the Session type
-type Session = {
-  id: string
-  messages: { role: "system" | "user" | "assistant"; content: string }[]
-  results: BreederData[]
-  createdAt: Date
-}
-
-// In-memory session storage for preview
-const sessions = new Map<string, Session>()
-
-export async function POST(req: Request) {
+export async function POST(request: NextRequest) {
   try {
-    const body = await req.json();
-    return NextResponse.json({ message: "Chat API is working!", data: body });
-  } catch (error) {
-    return NextResponse.json({ error: "Something went wrong" }, { status: 500 });
-  }
-}
-    // Get or create session
-    let session: Session
-    if (sessionId && sessions.has(sessionId)) {
-      session = sessions.get(sessionId)!
-    } else {
-      const newSessionId = Math.random().toString(36).substring(2, 15)
-      session = {
-        id: newSessionId,
-        messages: [],
-        results: [],
-        createdAt: new Date(),
-      }
-      sessions.set(newSessionId, session)
-    }
+    const body = await request.json()
 
-    // Add user message to session
-    session.messages.push({ role: "user", content: message })
+    // Get the backend URL from environment variables
+    const backendUrl = process.env.API_URL || "https://scraping-ai-chat-production.up.railway.app"
 
-    // Process the message
-    let results = session.results
-
-    // Check if the message is a scraping request
-    if (message.toLowerCase().includes("from the url")) {
-      results = [...mockBreeders]
-
-      // Check if pagination is requested
-      if (message.toLowerCase().includes("page 1 until 3")) {
-        const extraMockData = mockBreeders.map((breeder) => ({
-          ...breeder,
-          name: breeder.name + " Jr.",
-          location: breeder.location.replace("ND", "SD"),
-        }))
-        results = [...results, ...extraMockData]
-      }
-    } else if (message.toLowerCase().includes("filter")) {
-      // Handle filtering requests
-      if (message.toLowerCase().includes("mott nd")) {
-        results = results.filter(
-          (item: BreederData) => item.location && item.location.toUpperCase().includes("MOTT ND"),
-        )
-      }
-    }
-
-    // Generate AI response
-    const response = await openai.chat.completions.create({
-      model: "gpt-4",
-      messages: [
-        { role: "system", content: "You are a helpful assistant." },
-        ...session.messages,
-        {
-          role: "user",
-          content: `Based on the user's request: "${message}", and the available data of ${results.length} breeders, provide a helpful response.`,
-        },
-      ],
-      stream: true,
+    // Make a direct request to the backend
+    const response = await fetch(`${backendUrl}/api/chat`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
     })
 
-    // Fix for type compatibility with the AI package
-    // Create a proper Response object that the OpenAIStream can handle
-    const stream = OpenAIStream(response as any)
+    if (!response.ok) {
+      const errorData = await response.json()
+      console.error("Backend error:", errorData)
+      return NextResponse.json({ error: "Error from backend service", details: errorData }, { status: response.status })
+    }
 
-    // Update session in storage
-    session.results = results
-    sessions.set(session.id, session)
-
-    return new StreamingTextResponse(stream, {
-      headers: { "X-Session-Id": session.id },
-    })
+    const data = await response.json()
+    return NextResponse.json(data)
   } catch (error) {
-    console.error("API error:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    console.error("Error in chat route:", error)
+    return NextResponse.json({ error: "Internal server error", message: error.message }, { status: 500 })
   }
 }
