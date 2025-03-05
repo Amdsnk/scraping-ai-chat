@@ -99,9 +99,9 @@ app.all("/api/chat", async (req, res) => {
         }`,
       }
 
-      // Call OpenAI API
+      // Call OpenAI API with gpt-3.5-turbo model
       const completion = await openai.chat.completions.create({
-        model: "gpt-4",
+        model: "gpt-3.5-turbo", // Changed from gpt-4 to gpt-3.5-turbo
         messages: [systemMessage, ...messages],
         stream: false,
       })
