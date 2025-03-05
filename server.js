@@ -91,7 +91,8 @@ app.post("/api/chat", async (req, res) => {
       throw new Error("API_URL is missing in environment variables.");
     }
 
-    const proxyUrl = `${process.env.API_URL}/api/chat`;
+    const apiBaseUrl = process.env.API_URL.replace(/^https:/, "http:");
+    const proxyUrl = `${apiBaseUrl}/api/chat`;
     log("🔍 Proxying request to:", proxyUrl);
     log("📨 Request body:", req.body);
 
