@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Send, Loader2 } from "lucide-react"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 
 type Message = {
   role: "user" | "assistant"
@@ -47,17 +48,16 @@ export default function ChatInterface() {
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [results, setResults] = useState<BreederData[]>([])
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [])
 
-  // Update the handleSubmit function to better handle URLs and scraping
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!input.trim()) return
 
-    // Extract URLs from the input
     const urlRegex = /(https?:\/\/[^\s]+)/g
     const urls = input.match(urlRegex) || []
 
@@ -65,9 +65,9 @@ export default function ChatInterface() {
     setMessages((prev) => [...prev, userMessage])
     setInput("")
     setIsLoading(true)
+    setError(null)
 
     try {
-      // If the message contains a URL and is asking to scrape/extract data
       if (
         urls.length > 0 &&
         (input.toLowerCase().includes("get") ||
@@ -75,22 +75,23 @@ export default function ChatInterface() {
           input.toLowerCase().includes("scrape") ||
           input.toLowerCase().includes("find"))
       ) {
-        // First try to scrape the URL
         const scrapeResponse = await fetch(`/api/scrape`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ url: urls[0] }),
         })
 
-        if (scrapeResponse.ok) {
-          const scrapeData = await scrapeResponse.json()
-          if (scrapeData.results && Array.isArray(scrapeData.results)) {
-            setResults(scrapeData.results)
-          }
+        if (!scrapeResponse.ok) {
+          throw new Error(`Scraping failed: ${await scrapeResponse.text()}`)
+        }
+
+        const scrapeData = await scrapeResponse.json()
+        console.log("Scrape response:", scrapeData)
+        if (scrapeData.results && Array.isArray(scrapeData.results)) {
+          setResults(scrapeData.results)
         }
       }
 
-      // Then process with the chat API
       console.log("Sending request to API:", {
         message: userMessage.content,
         urls,
@@ -107,11 +108,16 @@ export default function ChatInterface() {
       })
 
       if (!response.ok) {
-        throw new Error(`Failed to send message: ${response.status}`)
+        throw new Error(`Chat request failed: ${await response.text()}`)
       }
 
       const data = await response.json()
       console.log("Received response from API:", data)
+
+      if (data.error) {
+        throw new Error(data.error)
+      }
+
       setMessages((prev) => [
         ...prev,
         { role: "assistant", content: data.content || data.text || "No response from AI" },
@@ -122,7 +128,8 @@ export default function ChatInterface() {
         setResults(data.results)
       }
     } catch (error) {
-      console.error("Error sending message:", error)
+      console.error("Error:", error)
+      setError(error instanceof Error ? error.message : "An unknown error occurred")
       setMessages((prev) => [...prev, { role: "assistant", content: "Sorry, there was an error. Please try again." }])
     } finally {
       setIsLoading(false)
@@ -133,6 +140,13 @@ export default function ChatInterface() {
     <div className="flex flex-col min-h-screen bg-gray-50 p-4">
       <div className="container mx-auto max-w-6xl flex-1 flex flex-col">
         <h1 className="text-2xl font-bold text-center mb-6">AI Web Scraping Chat</h1>
+
+        {error && (
+          <Alert variant="destructive" className="mb-4">
+            <AlertTitle>Error</AlertTitle>
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 flex-1">
           <Card className="md:col-span-2 flex flex-col">
