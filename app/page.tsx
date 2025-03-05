@@ -72,7 +72,7 @@ export default function ChatInterface() {
       }
 
       const data = await response.json();
-      setMessages((prev) => [...prev, { role: "assistant", content: data.text }]);
+      setMessages((prev) => [...prev, { role: "assistant", content: data.content }]);
       setSessionId(data.sessionId);
 
       if (data.results && Array.isArray(data.results)) {
