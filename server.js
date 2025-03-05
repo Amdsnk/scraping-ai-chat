@@ -75,169 +75,235 @@ function filterData(data, filterCriteria) {
   })
 }
 
+// Replace the scrapePageData function with this improved version that correctly handles the website's pagination
+
+// Function to scrape data from a page
+async function scrapePageData(url, pageNum) {
+  console.log(`🔍 Scraping page ${pageNum} from URL: ${url}`)
+
+  // For this specific website, we need to handle pagination differently
+  // The URL format appears to be something like: /find-a-breeder-detail/84050/
+  // And pagination might be handled with a different parameter or path structure
+
+  // Extract the base URL without any existing parameters
+  const baseUrl = url.split("?")[0]
+
+  // For this specific website, the pagination might be handled like:
+  // /find-a-breeder-detail/84050/?page=2
+  const pageUrl = `${baseUrl}?page=${pageNum}`
+
+  console.log(`Attempting to fetch: ${pageUrl}`)
+
+  try {
+    const response = await fetch(pageUrl)
+    const html = await response.text()
+    const $ = cheerio.load(html)
+
+    // Check if we have a table with data
+    const tables = $("table")
+    if (tables.length === 0) {
+      console.log(`No table found on page ${pageNum}`)
+      return { data: [], hasMorePages: false }
+    }
+
+    // Parse the page
+    const pageData = []
+    $("table tr").each((index, element) => {
+      if (index === 0) return // Skip header row
+
+      const columns = $(element).find("td")
+      if (columns.length >= 3) {
+        pageData.push({
+          name: $(columns[0]).text().trim() || "-",
+          phone: $(columns[1]).text().trim() || "-",
+          location: $(columns[2]).text().trim() || "-",
+        })
+      }
+    })
+
+    // Check if there are more pages by looking for pagination links
+    const hasMorePages =
+      $("a.page-numbers").length > 0 &&
+      $("a.page-numbers").filter((i, el) =>
+        $(el)
+          .text()
+          .includes(String(pageNum + 1)),
+      ).length > 0
+
+    console.log(`Found ${pageData.length} items on page ${pageNum}, hasMorePages: ${hasMorePages}`)
+    return { data: pageData, hasMorePages }
+  } catch (error) {
+    console.error(`Error scraping page ${pageNum}:`, error)
+    return { data: [], hasMorePages: false }
+  }
+}
+
 // Update the scrape endpoint to handle interactive pages
 app.post("/api/scrape", async (req, res) => {
   try {
-    console.log("Received scrape request:", req.body)
-    const { url, pagination, pageRange, sessionId } = req.body
+    console.log("Received scrape request:", req.body);
+    const { url, pagination, pageRange, sessionId } = req.body;
 
     // Get or create session
-    let session
+    let session;
+    let newSessionId = sessionId;
     if (sessionId && sessions.has(sessionId)) {
-      session = sessions.get(sessionId)
+      session = sessions.get(sessionId);
     } else {
-      const newSessionId = uuidv4()
-      session = { messages: [], scrapedData: null, currentPage: 1, lastUrl: null, allScrapedData: [] }
-      sessions.set(newSessionId, session)
-      const sessionId = newSessionId
+      newSessionId = uuidv4();
+      session = { messages: [], scrapedData: null, currentPage: 1, lastUrl: null, allScrapedData: [] };
+      sessions.set(newSessionId, session);
     }
 
-    // Initialize allScrapedData if it doesn't exist
-    if (!session.allScrapedData) {
-      session.allScrapedData = []
+    // Store the URL in the session
+    const targetUrl = url || session.lastUrl;
+    if (targetUrl) {
+      session.lastUrl = targetUrl;
+    } else {
+      return res.status(400).json({
+        error: "No URL provided and no previous URL in session"
+      });
     }
+
+    // Initialize or reset scraped data arrays
+    let scrapedResults = [];
 
     // Handle page range scraping
     if (pageRange && pageRange.start && pageRange.end) {
-      console.log(`🔍 Scraping pages ${pageRange.start} to ${pageRange.end}`)
+      console.log(`🔍 Scraping pages ${pageRange.start} to ${pageRange.end}`);
 
-      // Store the base URL without any page parameters
-      const baseUrl = url || session.lastUrl
-      session.lastUrl = baseUrl
+      // Validate page range
+      if (pageRange.start < 1) {
+        pageRange.start = 1;
+      }
+      
+      if (pageRange.end < pageRange.start) {
+        pageRange.end = pageRange.start;
+      }
+      
+      if (pageRange.end - pageRange.start > 5) {
+        // Limit to reasonable range to prevent abuse
+        pageRange.end = pageRange.start + 5;
+      }
 
-      // Reset data for new range request
-      session.allScrapedData = []
+      // Reset accumulated data for new range request
+      session.allScrapedData = [];
 
       // Scrape each page in the range
       for (let page = pageRange.start; page <= pageRange.end; page++) {
-        console.log(`🔍 Scraping page ${page} of ${pageRange.end}`)
-        const pageUrl = `${baseUrl}?page=${page}`
-
-        try {
-          const response = await fetch(pageUrl)
-          const html = await response.text()
-          const $ = cheerio.load(html)
-
-          // Parse the page
-          const pageData = []
-          $("table tr").each((index, element) => {
-            if (index === 0) return // Skip header row
-
-            const columns = $(element).find("td")
-            if (columns.length >= 3) {
-              pageData.push({
-                name: $(columns[0]).text().trim() || "-",
-                phone: $(columns[1]).text().trim() || "-",
-                location: $(columns[2]).text().trim() || "-",
-              })
-            }
-          })
-
+        const { data: pageData, hasMorePages } = await scrapePageData(targetUrl, page);
+        
+        if (pageData.length > 0) {
           // Add this page's data to the accumulated data
-          session.allScrapedData = [...session.allScrapedData, ...pageData]
-
+          session.allScrapedData = [...session.allScrapedData, ...pageData];
+          
           // Store the current page
-          session.currentPage = page
-
-          // Add a small delay to avoid overwhelming the server
-          await new Promise((resolve) => setTimeout(resolve, 500))
-        } catch (pageError) {
-          console.error(`Error scraping page ${page}:`, pageError)
+          session.currentPage = page;
+          
+          // If we've reached the end of available pages, break
+          if (!hasMorePages && page < pageRange.end) {
+            console.log(`No more pages available after page ${page}`);
+            break;
+          }
+        } else {
+          // If no data on this page, we might have reached the end
+          console.log(`No data found on page ${page}, might be the last page`);
+          break;
         }
+        
+        // Add a small delay to avoid overwhelming the server
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
-
-      // Set the final scraped data
-      session.scrapedData = session.allScrapedData
-
-      // If no data was found, return an error
-      if (session.scrapedData.length === 0) {
+      
+      // Set the scraped results to ONLY include data from the requested pages
+      scrapedResults = session.allScrapedData;
+      session.scrapedData = scrapedResults;
+    } 
+    // Handle single page or next page request
+    else if (pagination) {
+      // For pagination requests, increment the page number
+      session.currentPage = session.currentPage + 1;
+      const { data: pageData, hasMorePages } = await scrapePageData(targetUrl, session.currentPage);
+      
+      if (pageData.length > 0) {
+        // For pagination, we want to add to existing data, not replace it
+        if (!session.allScrapedData) {
+          session.allScrapedData = [];
+        }
+        session.allScrapedData = [...session.allScrapedData, ...pageData];
+        scrapedResults = session.allScrapedData;
+        session.scrapedData = scrapedResults;
+      } else {
         return res.status(404).json({
-          error: "No breeder information found on the provided URL. Please check the URL and try again.",
-        })
+          error: `No more data found on page ${session.currentPage}. You might have reached the end of the results.`
+        });
       }
-
-      return res.json({
-        message: `Pages ${pageRange.start} to ${pageRange.end} scraped successfully`,
-        results: session.scrapedData,
-        sessionId,
-        pageRange: pageRange,
-      })
+    }
+    // Initial request without pagination
+    else {
+      // For initial requests, just get page 1
+      session.currentPage = 1;
+      session.allScrapedData = []; // Reset accumulated data
+      const { data: pageData } = await scrapePageData(targetUrl, 1);
+      
+      if (pageData.length > 0) {
+        session.allScrapedData = pageData;
+        scrapedResults = pageData;
+        session.scrapedData = scrapedResults;
+      } else {
+        return res.status(404).json({
+          error: "No breeder information found on the provided URL. Please check the URL and try again."
+        });
+      }
     }
 
-    // Handle regular pagination or initial URL scraping
-    const scrapeUrl = pagination && session.lastUrl ? `${session.lastUrl}?page=${session.currentPage + 1}` : url
-    session.lastUrl = url || session.lastUrl
-    session.currentPage = pagination ? session.currentPage + 1 : 1
-
-    console.log(`🔍 Scraping URL: ${scrapeUrl}`)
-    const response = await fetch(scrapeUrl)
-    const html = await response.text()
-
-    // Parse the HTML
-    const $ = cheerio.load(html)
-
-    // Check if we're on the map page
-    if ($(".us-map").length > 0) {
-      return res.status(400).json({
-        error:
-          "The provided URL leads to an interactive map page. Direct scraping of breeder information is not possible from this page. Please provide a specific state or breeder list URL for scraping.",
-      })
-    } else {
-      // If we're not on the map page, use the original scraping logic
-      const newData = []
-      $("table tr").each((index, element) => {
-        if (index === 0) return // Skip header row
-
-        const columns = $(element).find("td")
-        if (columns.length >= 3) {
-          newData.push({
-            name: $(columns[0]).text().trim() || "-",
-            phone: $(columns[1]).text().trim() || "-",
-            location: $(columns[2]).text().trim() || "-",
-          })
-        }
-      })
-
-      if (newData.length === 0) {
-        return res.status(404).json({
-          error: "No breeder information found on the provided URL. Please check the URL and try again.",
-        })
-      }
-
-      session.scrapedData = newData
+    // If no data was found, return an error
+    if (scrapedResults.length === 0) {
+      return res.status(404).json({
+        error: "No breeder information found. Please check the URL and try again."
+      });
     }
 
     // Store the scraped content in the database
-    const { error: upsertError } = await supabase.from("scraped_content").upsert([
-      {
-        url: scrapeUrl,
-        content: JSON.stringify(session.scrapedData),
-        scraped_at: new Date().toISOString(),
-        page_count: session.currentPage,
-      },
-    ])
+    try {
+      const { error: upsertError } = await supabase.from("scraped_content").upsert([
+        {
+          url: targetUrl,
+          content: JSON.stringify(scrapedResults),
+          scraped_at: new Date().toISOString(),
+          page_count: pageRange ? (pageRange.end - pageRange.start + 1) : session.currentPage,
+        },
+      ]);
 
-    if (upsertError) {
-      console.error("❌ Error storing scraped content:", upsertError)
+      if (upsertError) {
+        console.error("❌ Error storing scraped content:", upsertError);
+      }
+    } catch (dbError) {
+      console.error("Database storage error:", dbError);
+      // Continue even if database storage fails
     }
 
     return res.json({
-      message: `Page ${session.currentPage} scraped successfully`,
-      results: session.scrapedData,
-      sessionId,
+      message: pageRange 
+        ? `Pages ${pageRange.start} to ${pageRange.end} scraped successfully` 
+        : `Page ${session.currentPage} scraped successfully`,
+      results: scrapedResults,
+      sessionId: newSessionId,
+      pageRange: pageRange,
       page: session.currentPage,
-    })
+      totalItems: scrapedResults.length
+    });
   } catch (error) {
-    console.error("❌ Error processing scrape request:", error)
+    console.error("❌ Error processing scrape request:", error);
     res.status(500).json({
       error: "An error occurred while processing your request",
       details: error.message,
-    })
+    });
   }
-})
+}
 
 // Update the chat endpoint to better handle sessions and data
-app.all("/api/chat", async (req, res) => {
+app.all(\"/api/chat", async (req, res) => {
   if (req.method === "GET") {
     return res.status(200).json({ message: "Chat API is ready" })
   } else if (req.method === "POST") {
@@ -247,12 +313,13 @@ app.all("/api/chat", async (req, res) => {
       let { message, sessionId, scrapedData, isFollowUp, originalQuery } = req.body
 
       // Create a new session if it doesn't exist
+      let newSessionId = sessionId
       if (!sessionId || !sessions.has(sessionId)) {
-        sessionId = uuidv4()
-        sessions.set(sessionId, { messages: [], scrapedData: null, currentPage: 1, lastUrl: null })
+        newSessionId = uuidv4()
+        sessions.set(newSessionId, { messages: [], scrapedData: null, currentPage: 1, lastUrl: null })
       }
 
-      const session = sessions.get(sessionId)
+      const session = sessions.get(newSessionId)
 
       // Update session with the latest scraped data
       if (scrapedData && Array.isArray(scrapedData)) {
@@ -358,7 +425,7 @@ app.all("/api/chat", async (req, res) => {
         const aiResponse = completion.choices[0].message
         session.messages.push(aiResponse)
 
-        res.json({ ...aiResponse, sessionId })
+        res.json({ ...aiResponse, sessionId: newSessionId })
       } catch (openaiError) {
         console.error("OpenAI API Error:", openaiError)
 
