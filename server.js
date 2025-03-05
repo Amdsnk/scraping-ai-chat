@@ -272,7 +272,7 @@ app.all("/api/chat", async (req, res) => {
       }
 
       let scrapedDataContext = ""
-      if (session.scrapedData) {
+      if (session.scrapedData && session.scrapedData.length > 0) {
         // Process data to replace empty values with '-'
         const processedData = session.scrapedData.map((item) => {
           const processedItem = { ...item }
@@ -291,6 +291,8 @@ app.all("/api/chat", async (req, res) => {
         const locations = new Set(processedData.map((item) => item.location).filter((loc) => loc && loc !== "-"))
         scrapedDataContext += `- Locations: ${Array.from(locations).join(", ")}\n`
         scrapedDataContext += `- Total breeders: ${processedData.length}\n\n`
+      } else {
+        scrapedDataContext = "No data has been scraped yet.\n\n"
       }
 
       // Check if the message contains a filtering request
@@ -323,8 +325,10 @@ app.all("/api/chat", async (req, res) => {
         ${scrapedDataContext}
         When answering questions, use the scraped or filtered data provided above. If the user asks to filter data, explain the filtering process and results.
         IMPORTANT: DO NOT say you don't have access to the data. The data has already been scraped and is available to you.
+        If no data has been scraped yet, inform the user and suggest they try scraping a URL first.
         If the user asks for the next page or more results, tell them you can fetch more data by asking for "next page" or "more results".
-        Always replace empty values with '-' in your responses.`,
+        Always replace empty values with '-' in your responses.
+        When reporting on scraped or filtered data, always include the actual values, even if they are '-'.`,
       }
 
       try {
