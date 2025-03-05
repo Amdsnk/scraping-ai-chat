@@ -55,18 +55,28 @@ app.all("/api/chat", async (req, res) => {
     return res.status(200).json({ message: "Chat API is ready" })
   } else if (req.method === "POST") {
     try {
-      const { messages, urls } = req.body
-
       console.log("Received request body:", JSON.stringify(req.body, null, 2))
 
-      if (!messages || !Array.isArray(messages)) {
-        return res.status(400).json({ error: "Invalid request. Messages array is required.", receivedBody: req.body })
+      let messages
+      if (req.body.message) {
+        // Handle single message format
+        messages = [{ role: "user", content: req.body.message }]
+      } else if (req.body.messages && Array.isArray(req.body.messages)) {
+        // Handle array of messages format
+        messages = req.body.messages
+      } else {
+        return res.status(400).json({
+          error: "Invalid request. Either a message string or messages array is required.",
+          receivedBody: req.body,
+        })
       }
+
+      const urls = req.body.urls || []
 
       // Process the chat request
       let contextData = []
 
-      if (urls && urls.length > 0) {
+      if (urls.length > 0) {
         const { data, error } = await supabase.from("scraped_content").select("*").in("url", urls)
 
         if (error) {
