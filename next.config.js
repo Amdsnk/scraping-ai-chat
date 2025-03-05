@@ -5,8 +5,8 @@ const nextConfig = {
   async rewrites() {
     return [
       {
-        source: "/api/chat",
-        destination: "https://scraping-ai-chat-production.up.railway.app/api/chat",
+        source: "/api/:path*",
+      destination: "https://scraping-ai-chat-production.up.railway.app/api/:path*",
       },
     ];
   },
