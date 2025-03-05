@@ -4,8 +4,6 @@ import type React from "react"
 import { useState } from "react"
 import type { Message } from "../types/chat"
 
-// ... other imports and component code ...
-
 const ChatComponent: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([])
   const [isLoading, setIsLoading] = useState(false)
@@ -30,7 +28,22 @@ const ChatComponent: React.FC = () => {
     }
   }
 
-  // ... rest of your component code ...
+  return (
+    <div>
+      {/* Your chat component JSX */}
+      {messages.map((message, index) => (
+        <div key={index}>
+          <strong>{message.role}:</strong> {message.content}
+        </div>
+      ))}
+      {error && <div style={{ color: "red" }}>{error}</div>}
+      {/* Add your chat input and submit button here */}
+      <form onSubmit={handleSubmit}>
+        <input type="text" />
+        <button type="submit">Send</button>
+      </form>
+    </div>
+  )
 }
 
 export default ChatComponent
