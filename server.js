@@ -107,13 +107,15 @@ app.use("/api/chat", async (req, res) => {
     console.log("📩 Response status:", nextResponse.status);
 
     if (!nextResponse.ok) {
-      throw new Error(`Upstream error: ${nextResponse.statusText}`);
+      const errorText = await nextResponse.text();
+      throw new Error(`Upstream error: ${nextResponse.statusText} - ${errorText}`);
     }
 
     const data = await nextResponse.json();
     console.log("📩 Response from Next.js API:", data);
 
-    res.json(data);
+    // ✅ Send response to frontend
+    res.status(200).json(data);
   } catch (error) {
     console.error("❌ Proxy error:", error);
     res.status(500).json({ error: "Internal server error", details: error.message });
