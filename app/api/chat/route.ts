@@ -7,6 +7,38 @@ export async function POST(request: NextRequest) {
     // Get the backend URL from environment variables
     const backendUrl = process.env.API_URL || "https://scraping-ai-chat-production.up.railway.app"
 
+    console.log("Received request body:", JSON.stringify(body, null, 2))
+
+    // Check if we need to scrape first
+    const urls = body.urls || []
+    if (
+      urls.length > 0 &&
+      (body.message.toLowerCase().includes("get") ||
+        body.message.toLowerCase().includes("extract") ||
+        body.message.toLowerCase().includes("scrape") ||
+        body.message.toLowerCase().includes("find"))
+    ) {
+      try {
+        console.log("Attempting to scrape URL:", urls[0])
+        // Try to scrape the URL first
+        const scrapeResponse = await fetch(`${backendUrl}/api/scrape`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ url: urls[0] }),
+        })
+
+        if (!scrapeResponse.ok) {
+          console.error("Scrape request failed:", await scrapeResponse.text())
+        } else {
+          console.log("Scrape successful")
+        }
+      } catch (scrapeError) {
+        console.error("Error pre-scraping URL:", scrapeError)
+      }
+    }
+
     console.log(
       "Sending request to backend:",
       JSON.stringify(
@@ -19,32 +51,6 @@ export async function POST(request: NextRequest) {
         2,
       ),
     )
-
-    // Check if we need to scrape first
-    const urls = body.urls || []
-    if (
-      urls.length > 0 &&
-      (body.message.toLowerCase().includes("get") ||
-        body.message.toLowerCase().includes("extract") ||
-        body.message.toLowerCase().includes("scrape") ||
-        body.message.toLowerCase().includes("find"))
-    ) {
-      try {
-        // Try to scrape the URL first
-        await fetch(`${backendUrl}/api/scrape`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ url: urls[0] }),
-        })
-        // We don't need to wait for the response here as the backend will store it
-        // and use it in the chat response
-      } catch (scrapeError) {
-        console.error("Error pre-scraping URL:", scrapeError)
-        // Continue with the chat request even if scraping fails
-      }
-    }
 
     // Make a direct request to the backend
     const response = await fetch(`${backendUrl}/api/chat`, {
@@ -60,12 +66,13 @@ export async function POST(request: NextRequest) {
     })
 
     if (!response.ok) {
-      const errorData = await response.json()
-      console.error("Backend error:", errorData)
-      return NextResponse.json({ error: "Error from backend service", details: errorData }, { status: response.status })
+      const errorText = await response.text()
+      console.error("Backend error:", errorText)
+      return NextResponse.json({ error: "Error from backend service", details: errorText }, { status: response.status })
     }
 
     const data = await response.json()
+    console.log("Received response from backend:", JSON.stringify(data, null, 2))
     return NextResponse.json(data)
   } catch (error: unknown) {
     console.error("Error in chat route:", error)
