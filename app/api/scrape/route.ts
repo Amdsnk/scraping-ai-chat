@@ -3,16 +3,16 @@ import { type NextRequest, NextResponse } from "next/server"
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { url } = body
+    const { url, pagination, sessionId } = body
 
-    if (!url) {
-      return NextResponse.json({ error: "URL is required" }, { status: 400 })
+    if (!url && !pagination) {
+      return NextResponse.json({ error: "URL is required for initial scraping" }, { status: 400 })
     }
 
     // Get the backend URL from environment variables
     const backendUrl = process.env.API_URL || "https://scraping-ai-chat-production.up.railway.app"
 
-    console.log("Sending scrape request to backend:", url)
+    console.log("Sending scrape request to backend:", url || "pagination request")
 
     // Make a direct request to the backend
     const response = await fetch(`${backendUrl}/api/scrape`, {
@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ url }),
+      body: JSON.stringify({ url, pagination, sessionId }),
     })
 
     if (!response.ok) {
