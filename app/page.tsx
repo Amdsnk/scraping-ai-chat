@@ -57,6 +57,9 @@ export default function ChatInterface() {
         input.toLowerCase().includes("more results") ||
         (input.toLowerCase().includes("page") && /\d+/.test(input))
 
+      let currentResults = results // Store current results
+
+      // Handle scraping if needed
       if (
         (urls.length > 0 &&
           (input.toLowerCase().includes("get") ||
@@ -85,25 +88,28 @@ export default function ChatInterface() {
         const scrapeData = await scrapeResponse.json()
         console.log("Scrape response:", scrapeData)
         if (scrapeData.results && Array.isArray(scrapeData.results)) {
-          setResults(scrapeData.results)
+          currentResults = scrapeData.results // Update current results
+          setResults(currentResults)
         }
         if (scrapeData.sessionId) {
           setSessionId(scrapeData.sessionId)
         }
       }
 
+      // Send chat request with the most up-to-date results
       console.log("Sending request to API:", {
         message: userMessage.content,
         sessionId,
-        scrapedData: results,
+        scrapedData: currentResults,
       })
+
       const response = await fetch(`${API_URL}/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: userMessage.content,
           sessionId,
-          scrapedData: results,
+          scrapedData: currentResults, // Use current results instead of state
         }),
       })
 
