@@ -3,13 +3,12 @@ const nextConfig = {
   reactStrictMode: true,
   swcMinify: true,
   async rewrites() {
-    return [
-      {
-        source: "/api/:path*",
-      destination: "https://scraping-ai-chat-production.up.railway.app/api/:path*",
-      },
-    ];
-  },
-};
+  return [
+    {
+      source: "/api/:path*",
+      destination: "https://scraping-ai-chat-production.up.railway.app/",
+    },
+  ];
+}
 
 export default nextConfig;
