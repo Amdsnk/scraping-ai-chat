@@ -79,7 +79,7 @@ function filterData(data, filterCriteria) {
 app.post("/api/scrape", async (req, res) => {
   try {
     console.log("Received scrape request:", req.body)
-    const { url, pagination, sessionId } = req.body
+    const { url, pagination, pageRange, sessionId } = req.body
 
     // Get or create session
     let session
@@ -87,14 +87,86 @@ app.post("/api/scrape", async (req, res) => {
       session = sessions.get(sessionId)
     } else {
       const newSessionId = uuidv4()
-      session = { messages: [], scrapedData: null, currentPage: 1, lastUrl: null }
+      session = { messages: [], scrapedData: null, currentPage: 1, lastUrl: null, allScrapedData: [] }
       sessions.set(newSessionId, session)
       const sessionId = newSessionId
     }
 
-    // Handle initial URL scraping or pagination
+    // Initialize allScrapedData if it doesn't exist
+    if (!session.allScrapedData) {
+      session.allScrapedData = []
+    }
+
+    // Handle page range scraping
+    if (pageRange && pageRange.start && pageRange.end) {
+      console.log(`🔍 Scraping pages ${pageRange.start} to ${pageRange.end}`)
+
+      // Store the base URL without any page parameters
+      const baseUrl = url || session.lastUrl
+      session.lastUrl = baseUrl
+
+      // Reset data for new range request
+      session.allScrapedData = []
+
+      // Scrape each page in the range
+      for (let page = pageRange.start; page <= pageRange.end; page++) {
+        console.log(`🔍 Scraping page ${page} of ${pageRange.end}`)
+        const pageUrl = `${baseUrl}?page=${page}`
+
+        try {
+          const response = await fetch(pageUrl)
+          const html = await response.text()
+          const $ = cheerio.load(html)
+
+          // Parse the page
+          const pageData = []
+          $("table tr").each((index, element) => {
+            if (index === 0) return // Skip header row
+
+            const columns = $(element).find("td")
+            if (columns.length >= 3) {
+              pageData.push({
+                name: $(columns[0]).text().trim() || "-",
+                phone: $(columns[1]).text().trim() || "-",
+                location: $(columns[2]).text().trim() || "-",
+              })
+            }
+          })
+
+          // Add this page's data to the accumulated data
+          session.allScrapedData = [...session.allScrapedData, ...pageData]
+
+          // Store the current page
+          session.currentPage = page
+
+          // Add a small delay to avoid overwhelming the server
+          await new Promise((resolve) => setTimeout(resolve, 500))
+        } catch (pageError) {
+          console.error(`Error scraping page ${page}:`, pageError)
+        }
+      }
+
+      // Set the final scraped data
+      session.scrapedData = session.allScrapedData
+
+      // If no data was found, return an error
+      if (session.scrapedData.length === 0) {
+        return res.status(404).json({
+          error: "No breeder information found on the provided URL. Please check the URL and try again.",
+        })
+      }
+
+      return res.json({
+        message: `Pages ${pageRange.start} to ${pageRange.end} scraped successfully`,
+        results: session.scrapedData,
+        sessionId,
+        pageRange: pageRange,
+      })
+    }
+
+    // Handle regular pagination or initial URL scraping
     const scrapeUrl = pagination && session.lastUrl ? `${session.lastUrl}?page=${session.currentPage + 1}` : url
-    session.lastUrl = scrapeUrl
+    session.lastUrl = url || session.lastUrl
     session.currentPage = pagination ? session.currentPage + 1 : 1
 
     console.log(`🔍 Scraping URL: ${scrapeUrl}`)
@@ -238,7 +310,7 @@ app.all("/api/chat", async (req, res) => {
         3. For filtering requests, explain the filtering process and show the matching results with their details.
         4. Always replace empty values with '-' in your responses.
         5. When reporting on scraped or filtered data, always include specific examples from the data.
-        6. If asked for more results or the next page, instruct the user to ask for "next page" or "more results".
+        6. If asked for more results or the next page, instruct the user to ask for "next page", "more results", or "scrape page X to Y".
         
         Format your responses like this:
         1. Acknowledge the user's request
