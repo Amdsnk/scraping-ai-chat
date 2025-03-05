@@ -106,6 +106,8 @@ app.post("/api/chat", async (req, res) => {
       body: JSON.stringify(req.body),
     });
 
+    clearTimeout(timeout); // Clear timeout if request succeeds
+
     if (!nextResponse.ok) {
       const errorText = await nextResponse.text();
       console.error(`❌ Upstream error: ${nextResponse.status} - ${errorText}`);
