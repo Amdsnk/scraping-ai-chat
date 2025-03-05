@@ -4,22 +4,15 @@ import dotenv from "dotenv";
 import cors from "cors";
 import OpenAI from "openai";
 import fetch from "node-fetch";
+import AbortController from "abort-controller";
 
 // ✅ Load environment variables
 dotenv.config();
 
-import express from "express";
-
 const app = express();
+const port = process.env.PORT || 8080; // Railway uses port 8080
+
 app.use(express.json());
-
-app.post("/api/chat", (req, res) => {
-  res.json({ message: "Chat API working!", data: req.body });
-});
-
-app.listen(3001, () => {
-  console.log("Server running on port 3001");
-});
 
 // ✅ Utility logger
 const log = (message, ...args) => {
@@ -94,18 +87,12 @@ app.get("/", (req, res) => {
   });
 });
 
-// ✅ Chat API Route (Fixed Proxy Handling)
-import AbortController from "abort-controller";
-
+// ✅ Chat API Route
 app.post("/api/chat", async (req, res) => {
   try {
     if (!process.env.API_URL) {
       throw new Error("API_URL is missing in environment variables.");
     }
-
-    app.get("/api/chat", (req, res) => {
-  res.status(200).json({ message: "API is working!" });
-});
 
     const apiBaseUrl = process.env.API_URL.replace(/^https:/, "http:");
     const proxyUrl = `${apiBaseUrl}/api/chat`;
