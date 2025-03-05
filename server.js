@@ -5,31 +5,28 @@ import cors from "cors";
 import OpenAI from "openai";
 import fetch from "node-fetch";
 
+// ✅ Load environment variables
 dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 3000;
 
-console.log("🔧 ENV VARIABLES:", process.env);
-console.log("📡 API_URL:", process.env.API_URL); // Debugging
-
+// ✅ Utility logger
 const log = (message, ...args) => {
   console.log(`[${new Date().toISOString()}] ${message}`, ...args);
 };
 
-const logMemoryUsage = () => {
-  const used = process.memoryUsage();
-  log(`📊 Memory usage: ${Math.round(used.rss / 1024 / 1024)}MB`);
-};
+log("🔍 Environment variables loaded");
+setTimeout(() => log("🔧 ENV VARIABLES:", process.env), 1000); // Wait for .env to load
 
-log("🔍 Environment variables:", Object.keys(process.env));
-log("🚀 PORT:", port);
+// ✅ CORS Configuration
+const allowedOrigins = [
+  "https://scraping-ai-chat.vercel.app",
+  "http://localhost:3000", // ✅ Allow local development
+];
 
-// ✅ CORS FIX: Allow requests from specific domains & handle missing origins
 const corsOptions = {
   origin: (origin, callback) => {
-    const allowedOrigins = ["https://scraping-ai-chat.vercel.app"];
-    
     if (!origin || allowedOrigins.includes(origin) || origin.endsWith(".vercel.app")) {
       callback(null, true);
     } else {
@@ -49,6 +46,9 @@ app.use(express.json({ limit: "10mb" }));
 // ✅ Initialize Supabase
 let supabase;
 try {
+  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error("Supabase environment variables are missing.");
+  }
   supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
   log("✅ Supabase client initialized successfully");
 } catch (error) {
@@ -58,6 +58,9 @@ try {
 // ✅ Initialize OpenAI
 let openai;
 try {
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error("OpenAI API key is missing.");
+  }
   openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   log("✅ OpenAI client initialized successfully");
 } catch (error) {
@@ -73,7 +76,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// ✅ Health check
+// ✅ Health check endpoint
 app.get("/health", (req, res) => {
   res.status(200).json({ status: "OK", timestamp: new Date().toISOString() });
 });
@@ -88,10 +91,16 @@ app.get("/", (req, res) => {
   });
 });
 
-// ✅ FIXED: Proper Route Handler for `/api/chat`
+// ✅ FIX: Avoid Infinite Proxy Loop in `/api/chat`
 app.post("/api/chat", async (req, res) => {
   try {
-    const proxyUrl = `${process.env.API_URL}/api/chat`;
+    if (!process.env.API_URL) {
+      throw new Error("API_URL is missing in environment variables.");
+    }
+
+    const proxyUrl = process.env.API_URL.includes("scraping-ai-chat-production.up.railway.app")
+      ? "https://scraping-ai-chat-production.up.railway.app"
+      : `${process.env.API_URL}/api/chat`;
 
     log("🔍 Proxying request to:", proxyUrl);
     log("📨 Request body:", req.body);
@@ -100,6 +109,7 @@ app.post("/api/chat", async (req, res) => {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        "User-Agent": "node-fetch", // ✅ Fix for API compatibility
         ...(req.headers.authorization && { Authorization: req.headers.authorization }),
       },
       body: JSON.stringify(req.body),
@@ -109,7 +119,8 @@ app.post("/api/chat", async (req, res) => {
 
     if (!nextResponse.ok) {
       const errorText = await nextResponse.text();
-      throw new Error(`Upstream error: ${nextResponse.statusText} - ${errorText}`);
+      log(`❌ Upstream error: ${nextResponse.status} - ${errorText}`);
+      return res.status(nextResponse.status).json({ error: "Upstream error", details: errorText });
     }
 
     const data = await nextResponse.json();
