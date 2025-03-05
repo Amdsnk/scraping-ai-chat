@@ -52,6 +52,7 @@ export default function ChatInterface() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [])
 
+  // Update the handleSubmit function to better handle URLs and scraping
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!input.trim()) return
@@ -66,7 +67,36 @@ export default function ChatInterface() {
     setIsLoading(true)
 
     try {
-      const response = await fetch(`${API_URL}/api/chat`, {
+      // If the message contains a URL and is asking to scrape/extract data
+      if (
+        urls.length > 0 &&
+        (input.toLowerCase().includes("get") ||
+          input.toLowerCase().includes("extract") ||
+          input.toLowerCase().includes("scrape") ||
+          input.toLowerCase().includes("find"))
+      ) {
+        // First try to scrape the URL
+        const scrapeResponse = await fetch(`/api/scrape`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: urls[0] }),
+        })
+
+        if (scrapeResponse.ok) {
+          const scrapeData = await scrapeResponse.json()
+          if (scrapeData.results && Array.isArray(scrapeData.results)) {
+            setResults(scrapeData.results)
+          }
+        }
+      }
+
+      // Then process with the chat API
+      console.log("Sending request to API:", {
+        message: userMessage.content,
+        urls,
+        sessionId,
+      })
+      const response = await fetch(`/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -81,6 +111,7 @@ export default function ChatInterface() {
       }
 
       const data = await response.json()
+      console.log("Received response from API:", data)
       setMessages((prev) => [
         ...prev,
         { role: "assistant", content: data.content || data.text || "No response from AI" },
