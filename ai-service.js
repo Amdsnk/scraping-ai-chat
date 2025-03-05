@@ -20,6 +20,12 @@ export async function processQuery(query, sessionData) {
       query.toLowerCase().includes("more results") ||
       (query.toLowerCase().includes("page") && /\d+/.test(query))
 
+    // Check for page range requests (e.g., "page 1 to 2" or "pages 1-3")
+    const pageRangeMatch = query.match(/page[s]?\s+(\d+)\s*(?:to|-)\s*(\d+)/i)
+    const pageRange = pageRangeMatch
+      ? { start: Number.parseInt(pageRangeMatch[1]), end: Number.parseInt(pageRangeMatch[2]) }
+      : null
+
     // If the query contains URLs and is asking to scrape/extract data
     if (
       (urls.length > 0 &&
@@ -39,6 +45,7 @@ export async function processQuery(query, sessionData) {
           body: JSON.stringify({
             url: urls[0] || sessionData.lastUrl,
             pagination: isPaginationRequest,
+            pageRange: pageRange,
             sessionId: sessionData.sessionId,
           }),
         })
