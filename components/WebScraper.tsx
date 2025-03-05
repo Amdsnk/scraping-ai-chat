@@ -50,7 +50,7 @@ export default function WebScraper({ onDataScraped }: { onDataScraped: (data: Sc
       }
     } catch (error) {
       console.error("Error scraping website:", error)
-      setError(error.message || "An error occurred while scraping the website")
+      setError(error instanceof Error ? error.message : "An error occurred while scraping the website")
     } finally {
       setIsLoading(false)
     }
@@ -95,4 +95,3 @@ export default function WebScraper({ onDataScraped }: { onDataScraped: (data: Sc
     </Card>
   )
 }
-
