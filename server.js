@@ -83,10 +83,27 @@ app.use("/api/chat", async (req, res) => {
       throw new Error("API_URL is not defined in environment variables.");
     }
 
-    const apiUrl = process.env.API_URL?.trim(); // Ensure it's defined and trimmed
-if (!apiUrl || !apiUrl.startsWith("http")) {
-  return res.status(500).json({ error: "API_URL is missing or invalid in environment variables" });
-}
+    console.log("🔍 Proxying request to:", process.env.API_URL + "/api/chat");
+    console.log("📨 Request body:", req.body);
+
+    const nextResponse = await fetch(`${process.env.API_URL}/api/chat`, {
+      method: req.method,
+      headers: {
+        "Content-Type": "application/json",
+        ...(req.headers.authorization && { Authorization: req.headers.authorization }),
+      },
+      body: req.method !== "GET" ? JSON.stringify(req.body) : null,
+    });
+
+    const data = await nextResponse.json();
+    console.log("📩 Response from Next.js API:", data);
+
+    res.json(data);
+  } catch (error) {
+    console.error("❌ Proxy error:", error);
+    res.status(500).json({ error: "Internal server error", details: error.message });
+  }
+});
 
 const nextResponse = await fetch(`${apiUrl}/api/chat`, {
       method: req.method,
