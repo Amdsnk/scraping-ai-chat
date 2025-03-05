@@ -1,4 +1,3 @@
-// next.config.js
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
@@ -6,11 +5,11 @@ const nextConfig = {
   async rewrites() {
     return [
       {
-        source: "/api/:path*",
-        destination: "https://scraping-ai-chat-production.up.railway.app/",
+        source: "/api/chat",
+        destination: "https://scraping-ai-chat-production.up.railway.app/api/chat",
       },
-    ]
+    ];
   },
-}
+};
 
-export default nextConfig
+export default nextConfig;
