@@ -80,9 +80,8 @@ export default function ChatInterface() {
         })
 
         if (!scrapeResponse.ok) {
-          const errorText = await scrapeResponse.text()
-          console.error("Scrape request failed:", errorText)
-          throw new Error(`Scraping failed: ${errorText}`)
+          const errorData = await scrapeResponse.json()
+          throw new Error(errorData.error || "An error occurred while scraping the website")
         }
 
         const scrapeData = await scrapeResponse.json()
@@ -90,6 +89,8 @@ export default function ChatInterface() {
         if (scrapeData.results && Array.isArray(scrapeData.results)) {
           currentResults = scrapeData.results // Update current results
           setResults(currentResults)
+        } else if (scrapeData.error) {
+          throw new Error(scrapeData.error)
         }
         if (scrapeData.sessionId) {
           setSessionId(scrapeData.sessionId)
@@ -131,7 +132,13 @@ export default function ChatInterface() {
     } catch (error) {
       console.error("Error:", error)
       setError(error instanceof Error ? error.message : "An unknown error occurred")
-      setMessages((prev) => [...prev, { role: "assistant", content: "Sorry, there was an error. Please try again." }])
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: `Error: ${error instanceof Error ? error.message : "An unknown error occurred"}`,
+        },
+      ])
     } finally {
       setIsLoading(false)
     }
