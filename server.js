@@ -4,6 +4,8 @@ import { createClient } from "@supabase/supabase-js"
 import OpenAI from "openai"
 import dotenv from "dotenv"
 import rateLimit from "express-rate-limit"
+import fetch from "node-fetch"
+import cheerio from "cheerio"
 
 dotenv.config()
 
@@ -150,13 +152,62 @@ app.post("/api/scrape", async (req, res) => {
       return res.status(400).json({ error: "URL is required" })
     }
 
-    // Your scraping logic here
-    // ...
+    // Check if we already have this URL in the database
+    const { data: existingData, error: dbError } = await supabase
+      .from("scraped_content")
+      .select("*")
+      .eq("url", url)
+      .single()
 
-    // For now, let's return a mock response
-    res.json({
+    if (dbError && dbError.code !== "PGRST116") {
+      console.error("❌ Supabase error:", dbError)
+      return res.status(500).json({ error: "Database error", details: dbError })
+    }
+
+    if (existingData) {
+      console.log("✅ Found existing data for URL:", url)
+      return res.json({
+        message: "Data retrieved from database",
+        results: JSON.parse(existingData.content),
+        fromCache: true,
+      })
+    }
+
+    // If not in database, scrape the URL
+    console.log("🔍 Scraping URL:", url)
+    const response = await fetch(url)
+    const html = await response.text()
+
+    // Parse the HTML and extract breeder information
+    const $ = cheerio.load(html)
+    const breeders = []
+
+    $("table tr").each((index, element) => {
+      if (index === 0) return // Skip header row
+
+      const columns = $(element).find("td")
+      if (columns.length >= 3) {
+        breeders.push({
+          name: $(columns[0]).text().trim(),
+          phone: $(columns[1]).text().trim(),
+          location: $(columns[2]).text().trim(),
+        })
+      }
+    })
+
+    // Store the scraped content in the database
+    const { error: insertError } = await supabase
+      .from("scraped_content")
+      .insert([{ url, content: JSON.stringify(breeders), scraped_at: new Date().toISOString() }])
+
+    if (insertError) {
+      console.error("❌ Error storing scraped content:", insertError)
+    }
+
+    return res.json({
       message: "URL scraped successfully",
-      results: [{ name: "Example Breeder", phone: "123-456-7890", location: "Example City, State" }],
+      results: breeders,
+      fromCache: false,
     })
   } catch (error) {
     console.error("❌ Error processing scrape request:", error)
@@ -166,100 +217,6 @@ app.post("/api/scrape", async (req, res) => {
     })
   }
 })
-
-// Helper function to extract breeder information from HTML content
-function extractBreederInfo(html, url) {
-  try {
-    // This is a simple extraction example - in a real app, you'd use a proper HTML parser
-    // For demonstration purposes, we'll use regex patterns to extract information
-
-    const nameRegex = /<h1[^>]*>(.*?)<\/h1>/gi
-    const phoneRegex = /($$\d{3}$$\s*\d{3}-\d{4}|\d{3}-\d{3}-\d{4})/g
-    const locationRegex = /<address[^>]*>(.*?)<\/address>/gis
-
-    // Extract matches
-    const nameMatches = [...html.matchAll(nameRegex)].map((match) => match[1].trim())
-    const phoneMatches = html.match(phoneRegex) || []
-    const locationMatches = [...html.matchAll(locationRegex)].map((match) =>
-      match[1]
-        .replace(/<[^>]*>/g, " ")
-        .replace(/\s+/g, " ")
-        .trim(),
-    )
-
-    // If we couldn't find structured data, try a more generic approach
-    if (!nameMatches.length || !phoneMatches.length || !locationMatches.length) {
-      // Use OpenAI to extract the information
-      return extractWithAI(html, url)
-    }
-
-    // Combine the extracted information
-    const results = []
-    const maxItems = Math.max(nameMatches.length, phoneMatches.length, locationMatches.length)
-
-    for (let i = 0; i < maxItems; i++) {
-      results.push({
-        name: nameMatches[i % nameMatches.length] || "Unknown",
-        phone: phoneMatches[i % phoneMatches.length] || "Unknown",
-        location: locationMatches[i % locationMatches.length] || "Unknown",
-      })
-    }
-
-    return results
-  } catch (error) {
-    console.error("❌ Error extracting breeder info:", error)
-    return []
-  }
-}
-
-// Helper function to extract information using AI
-async function extractWithAI(html, url) {
-  try {
-    // Simplify the HTML to reduce token usage
-    const simplifiedHtml = html
-      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
-      .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, "")
-      .replace(/<[^>]*>/g, " ")
-      .replace(/\s+/g, " ")
-      .substring(0, 10000) // Limit to 10,000 characters
-
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        {
-          role: "system",
-          content: `You are a data extraction assistant. Extract breeder information from the provided HTML content.
-          Return ONLY a JSON array with objects containing name, phone, and location properties.
-          Format: [{"name": "Breeder Name", "phone": "123-456-7890", "location": "City, State"}]
-          If you can't find the information, return an empty array.`,
-        },
-        {
-          role: "user",
-          content: `Extract breeder information from this URL: ${url}\n\nHTML Content: ${simplifiedHtml}`,
-        },
-      ],
-      temperature: 0.3,
-    })
-
-    const responseText = completion.choices[0].message.content
-
-    // Try to parse the JSON response
-    try {
-      // Extract JSON array from the response
-      const jsonMatch = responseText.match(/\[\s*\{.*\}\s*\]/s)
-      if (jsonMatch) {
-        return JSON.parse(jsonMatch[0])
-      }
-      return []
-    } catch (parseError) {
-      console.error("❌ Error parsing AI response:", parseError)
-      return []
-    }
-  } catch (error) {
-    console.error("❌ Error using AI for extraction:", error)
-    return []
-  }
-}
 
 // Start server
 app.listen(PORT, "0.0.0.0", () => {
