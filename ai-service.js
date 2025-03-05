@@ -9,8 +9,53 @@ import { generateText } from "ai"
  */
 export async function processQuery(query, sessionData) {
   try {
+    // Check if the query contains a URL
+    const urlRegex = /(https?:\/\/[^\s]+)/g
+    const urls = query.match(urlRegex) || []
+
+    let scrapedData = sessionData.results || []
+    let responseText = ""
+
+    // If the query contains URLs and is asking to scrape/extract data
+    if (
+      urls.length > 0 &&
+      (query.toLowerCase().includes("get") ||
+        query.toLowerCase().includes("extract") ||
+        query.toLowerCase().includes("scrape") ||
+        query.toLowerCase().includes("find"))
+    ) {
+      // First, try to scrape the URLs if they're not already in the results
+      if (scrapedData.length === 0) {
+        try {
+          console.log("Attempting to scrape URL:", urls[0])
+          // Make a request to the scrape API
+          const response = await fetch(`/api/scrape`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ url: urls[0] }),
+          })
+
+          if (response.ok) {
+            const data = await response.json()
+            console.log("Scrape response:", data)
+            if (data.results && Array.isArray(data.results)) {
+              scrapedData = data.results
+              console.log("Scraped data:", scrapedData)
+            }
+          } else {
+            console.error("Scrape request failed:", await response.text())
+          }
+        } catch (error) {
+          console.error("Error scraping URL:", error)
+        }
+      }
+    }
+
     // Build context from previous conversation and available data
-    const context = buildContext(sessionData)
+    const context = buildContext({
+      ...sessionData,
+      results: scrapedData,
+    })
 
     // Generate AI response using the AI SDK
     const { text } = await generateText({
@@ -22,15 +67,18 @@ export async function processQuery(query, sessionData) {
         
         Please respond to the user query based on the available data. 
         If the query requires filtering or processing the data, please do so and explain the results.
-        If the query is about scraping a website, explain what data will be extracted.
+        If the data has been scraped, analyze and present the information in a helpful way.
+        If no data is available yet, suggest how the user might proceed.
       `,
     })
 
+    responseText = text
+
     // Process the results based on the query
-    const processedResults = processResults(query, sessionData.results || [])
+    const processedResults = processResults(query, scrapedData)
 
     return {
-      text,
+      text: responseText,
       results: processedResults,
     }
   } catch (error) {
@@ -110,4 +158,3 @@ function processResults(query, results) {
   // Return original results if no processing needed
   return results
 }
-
