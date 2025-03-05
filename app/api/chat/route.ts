@@ -16,7 +16,8 @@ export async function POST(request: NextRequest) {
       (body.message.toLowerCase().includes("get") ||
         body.message.toLowerCase().includes("extract") ||
         body.message.toLowerCase().includes("scrape") ||
-        body.message.toLowerCase().includes("find"))
+        body.message.toLowerCase().includes("find")) &&
+      !body.isFollowUp // Skip scraping for follow-up analysis
     ) {
       try {
         console.log("Attempting to scrape URL:", urls[0])
@@ -46,6 +47,8 @@ export async function POST(request: NextRequest) {
           message: body.message,
           urls: body.urls || [],
           sessionId: body.sessionId,
+          isFollowUp: body.isFollowUp || false,
+          originalQuery: body.originalQuery || null,
         },
         null,
         2,
@@ -62,6 +65,9 @@ export async function POST(request: NextRequest) {
         message: body.message,
         urls: body.urls || [],
         sessionId: body.sessionId,
+        scrapedData: body.scrapedData,
+        isFollowUp: body.isFollowUp || false,
+        originalQuery: body.originalQuery || null,
       }),
     })
 
