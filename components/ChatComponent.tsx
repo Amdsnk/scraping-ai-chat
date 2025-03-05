@@ -25,7 +25,7 @@ export function ChatComponent() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          messages: [...messages, newMessage],
+          message: input,
           urls: [], // Add URLs here if needed
         }),
       })
@@ -35,7 +35,7 @@ export function ChatComponent() {
       }
 
       const data = await response.json()
-      setMessages((prevMessages) => [...prevMessages, data])
+      setMessages((prevMessages) => [...prevMessages, { role: "assistant", content: data.content }])
     } catch (error) {
       console.error("Error sending message:", error)
       // Handle error (e.g., show an error message to the user)
@@ -63,4 +63,3 @@ export function ChatComponent() {
     </div>
   )
 }
-
