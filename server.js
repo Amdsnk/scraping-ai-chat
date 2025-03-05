@@ -75,27 +75,26 @@ function filterData(data, filterCriteria) {
   })
 }
 
-// Replace the scrapePageData function with this improved version that correctly handles the website's pagination
-
 // Function to scrape data from a page
 async function scrapePageData(url, pageNum) {
   console.log(`🔍 Scraping page ${pageNum} from URL: ${url}`)
 
-  // For this specific website, we need to handle pagination differently
-  // The URL format appears to be something like: /find-a-breeder-detail/84050/
-  // And pagination might be handled with a different parameter or path structure
-
   // Extract the base URL without any existing parameters
   const baseUrl = url.split("?")[0]
 
-  // For this specific website, the pagination might be handled like:
-  // /find-a-breeder-detail/84050/?page=2
-  const pageUrl = `${baseUrl}?page=${pageNum}`
+  // For this specific website, construct the pagination URL
+  const pageUrl = pageNum === 1 ? baseUrl : `${baseUrl}?page=${pageNum}`
 
   console.log(`Attempting to fetch: ${pageUrl}`)
 
   try {
     const response = await fetch(pageUrl)
+
+    if (!response.ok) {
+      console.error(`Failed to fetch page ${pageNum}: ${response.status} ${response.statusText}`)
+      return { data: [], hasMorePages: false }
+    }
+
     const html = await response.text()
     const $ = cheerio.load(html)
 
@@ -122,13 +121,14 @@ async function scrapePageData(url, pageNum) {
     })
 
     // Check if there are more pages by looking for pagination links
+    // This is specific to the website structure
+    const paginationLinks = $(".page-numbers")
     const hasMorePages =
-      $("a.page-numbers").length > 0 &&
-      $("a.page-numbers").filter((i, el) =>
-        $(el)
-          .text()
-          .includes(String(pageNum + 1)),
-      ).length > 0
+      paginationLinks.length > 0 &&
+      paginationLinks.filter((i, el) => {
+        const text = $(el).text().trim()
+        return !isNaN(Number.parseInt(text)) && Number.parseInt(text) > pageNum
+      }).length > 0
 
     console.log(`Found ${pageData.length} items on page ${pageNum}, hasMorePages: ${hasMorePages}`)
     return { data: pageData, hasMorePages }
@@ -151,7 +151,14 @@ app.post("/api/scrape", async (req, res) => {
       session = sessions.get(sessionId)
     } else {
       newSessionId = uuidv4()
-      session = { messages: [], scrapedData: null, currentPage: 1, lastUrl: null, allScrapedData: [] }
+      session = {
+        messages: [],
+        scrapedData: null,
+        currentPage: 1,
+        lastUrl: null,
+        allScrapedData: [],
+        pageData: {}, // Store data by page number
+      }
       sessions.set(newSessionId, session)
     }
 
@@ -165,10 +172,10 @@ app.post("/api/scrape", async (req, res) => {
       })
     }
 
-    // Initialize or reset scraped data arrays
+    // Initialize scraped results array
     let scrapedResults = []
 
-    // Handle page range scraping
+    // For page range requests, we'll only return data from the requested pages
     if (pageRange && pageRange.start && pageRange.end) {
       console.log(`🔍 Scraping pages ${pageRange.start} to ${pageRange.end}`)
 
@@ -186,68 +193,105 @@ app.post("/api/scrape", async (req, res) => {
         pageRange.end = pageRange.start + 5
       }
 
-      // Reset accumulated data for new range request
-      session.allScrapedData = []
+      // Initialize page data storage if needed
+      if (!session.pageData) {
+        session.pageData = {}
+      }
 
       // Scrape each page in the range
       for (let page = pageRange.start; page <= pageRange.end; page++) {
-        const { data: pageData, hasMorePages } = await scrapePageData(targetUrl, page)
+        // Check if we already have data for this page
+        if (!session.pageData[page]) {
+          const { data: pageData, hasMorePages } = await scrapePageData(targetUrl, page)
 
-        if (pageData.length > 0) {
-          // Add this page's data to the accumulated data
-          session.allScrapedData = [...session.allScrapedData, ...pageData]
+          if (pageData.length > 0) {
+            // Store this page's data separately
+            session.pageData[page] = pageData
 
-          // Store the current page
-          session.currentPage = page
-
-          // If we've reached the end of available pages, break
-          if (!hasMorePages && page < pageRange.end) {
-            console.log(`No more pages available after page ${page}`)
+            // If we've reached the end of available pages, break
+            if (!hasMorePages && page < pageRange.end) {
+              console.log(`No more pages available after page ${page}`)
+              break
+            }
+          } else {
+            // If no data on this page, we might have reached the end
+            console.log(`No data found on page ${page}, might be the last page`)
             break
           }
-        } else {
-          // If no data on this page, we might have reached the end
-          console.log(`No data found on page ${page}, might be the last page`)
-          break
-        }
 
-        // Add a small delay to avoid overwhelming the server
-        await new Promise((resolve) => setTimeout(resolve, 500))
+          // Add a small delay to avoid overwhelming the server
+          await new Promise((resolve) => setTimeout(resolve, 500))
+        } else {
+          console.log(`Using cached data for page ${page}`)
+        }
       }
 
-      // Set the scraped results to ONLY include data from the requested pages
-      scrapedResults = session.allScrapedData
+      // Combine only the requested pages into the results
+      scrapedResults = []
+      for (let page = pageRange.start; page <= pageRange.end; page++) {
+        if (session.pageData[page]) {
+          scrapedResults = [...scrapedResults, ...session.pageData[page]]
+        }
+      }
+
+      // Update the session's current page and scraped data
+      session.currentPage = pageRange.end
       session.scrapedData = scrapedResults
+
+      console.log(`Combined ${scrapedResults.length} items from pages ${pageRange.start} to ${pageRange.end}`)
     }
     // Handle single page or next page request
     else if (pagination) {
       // For pagination requests, increment the page number
       session.currentPage = session.currentPage + 1
-      const { data: pageData, hasMorePages } = await scrapePageData(targetUrl, session.currentPage)
 
-      if (pageData.length > 0) {
-        // For pagination, we want to add to existing data, not replace it
-        if (!session.allScrapedData) {
-          session.allScrapedData = []
-        }
-        session.allScrapedData = [...session.allScrapedData, ...pageData]
-        scrapedResults = session.allScrapedData
-        session.scrapedData = scrapedResults
-      } else {
-        return res.status(404).json({
-          error: `No more data found on page ${session.currentPage}. You might have reached the end of the results.`,
-        })
+      // Initialize page data storage if needed
+      if (!session.pageData) {
+        session.pageData = {}
       }
+
+      // Check if we already have data for this page
+      if (!session.pageData[session.currentPage]) {
+        const { data: pageData, hasMorePages } = await scrapePageData(targetUrl, session.currentPage)
+
+        if (pageData.length > 0) {
+          // Store this page's data separately
+          session.pageData[session.currentPage] = pageData
+        } else {
+          return res.status(404).json({
+            error: `No more data found on page ${session.currentPage}. You might have reached the end of the results.`,
+          })
+        }
+      } else {
+        console.log(`Using cached data for page ${session.currentPage}`)
+      }
+
+      // Combine all pages up to the current page
+      scrapedResults = []
+      for (let page = 1; page <= session.currentPage; page++) {
+        if (session.pageData[page]) {
+          scrapedResults = [...scrapedResults, ...session.pageData[page]]
+        }
+      }
+
+      // Update the session's scraped data
+      session.scrapedData = scrapedResults
+
+      console.log(`Combined ${scrapedResults.length} items from pages 1 to ${session.currentPage}`)
     }
     // Initial request without pagination
     else {
       // For initial requests, just get page 1
       session.currentPage = 1
-      session.allScrapedData = [] // Reset accumulated data
+
+      // Initialize page data storage
+      session.pageData = {}
+
       const { data: pageData } = await scrapePageData(targetUrl, 1)
 
       if (pageData.length > 0) {
-        session.allScrapedData = pageData
+        // Store this page's data separately
+        session.pageData[1] = pageData
         scrapedResults = pageData
         session.scrapedData = scrapedResults
       } else {
@@ -255,6 +299,8 @@ app.post("/api/scrape", async (req, res) => {
           error: "No breeder information found on the provided URL. Please check the URL and try again.",
         })
       }
+
+      console.log(`Found ${scrapedResults.length} items on page 1`)
     }
 
     // If no data was found, return an error
