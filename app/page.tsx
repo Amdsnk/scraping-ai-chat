@@ -52,7 +52,7 @@ export default function ChatInterface() {
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [])
+  }, [messages])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -76,7 +76,7 @@ export default function ChatInterface() {
           input.toLowerCase().includes("find"))
       ) {
         console.log("Sending scrape request for URL:", urls[0])
-        const scrapeResponse = await fetch(`/api/scrape`, {
+        const scrapeResponse = await fetch(`${API_URL}/api/scrape`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ url: urls[0] }),
@@ -100,7 +100,7 @@ export default function ChatInterface() {
         urls,
         sessionId,
       })
-      const response = await fetch(`/api/chat`, {
+      const response = await fetch(`${API_URL}/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
