@@ -39,6 +39,7 @@ export default function ChatInterface() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [])
 
+  // Update the handleSubmit function to better handle sessions and pagination
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!input.trim()) return
@@ -52,19 +53,28 @@ export default function ChatInterface() {
     try {
       const urlRegex = /(https?:\/\/[^\s]+)/g
       const urls = input.match(urlRegex) || []
+      const isPaginationRequest =
+        input.toLowerCase().includes("next page") ||
+        input.toLowerCase().includes("more results") ||
+        (input.toLowerCase().includes("page") && /\d+/.test(input))
 
       if (
-        urls.length > 0 &&
-        (input.toLowerCase().includes("get") ||
-          input.toLowerCase().includes("extract") ||
-          input.toLowerCase().includes("scrape") ||
-          input.toLowerCase().includes("find"))
+        (urls.length > 0 &&
+          (input.toLowerCase().includes("get") ||
+            input.toLowerCase().includes("extract") ||
+            input.toLowerCase().includes("scrape") ||
+            input.toLowerCase().includes("find"))) ||
+        isPaginationRequest
       ) {
-        console.log("Sending scrape request for URL:", urls[0])
+        console.log("Sending scrape request for:", isPaginationRequest ? "pagination" : urls[0])
         const scrapeResponse = await fetch(`${API_URL}/api/scrape`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url: urls[0], sessionId }),
+          body: JSON.stringify({
+            url: urls[0] || undefined,
+            pagination: isPaginationRequest,
+            sessionId,
+          }),
         })
 
         if (!scrapeResponse.ok) {
@@ -76,7 +86,17 @@ export default function ChatInterface() {
         const scrapeData = await scrapeResponse.json()
         console.log("Scrape response:", scrapeData)
         if (scrapeData.results && Array.isArray(scrapeData.results)) {
-          setResults(scrapeData.results)
+          // Process data to replace empty values with '-'
+          const processedResults = scrapeData.results.map((item: any) => {
+            const processedItem = { ...item }
+            Object.keys(processedItem).forEach((key) => {
+              if (!processedItem[key] || processedItem[key].trim() === "") {
+                processedItem[key] = "-"
+              }
+            })
+            return processedItem
+          })
+          setResults(processedResults)
         }
         if (scrapeData.sessionId) {
           setSessionId(scrapeData.sessionId)
@@ -93,6 +113,7 @@ export default function ChatInterface() {
         body: JSON.stringify({
           message: userMessage.content,
           sessionId,
+          urls: input.match(urlRegex) || [],
         }),
       })
 
@@ -188,24 +209,38 @@ export default function ChatInterface() {
                 </TabsList>
                 <TabsContent value="table" className="h-[60vh] overflow-auto">
                   {results.length > 0 ? (
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Name</TableHead>
-                          <TableHead>Phone</TableHead>
-                          <TableHead>Location</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {results.map((item, index) => (
-                          <TableRow key={index}>
-                            <TableCell>{item.name}</TableCell>
-                            <TableCell>{item.phone}</TableCell>
-                            <TableCell>{item.location}</TableCell>
+                    <>
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Name</TableHead>
+                            <TableHead>Phone</TableHead>
+                            <TableHead>Location</TableHead>
                           </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
+                        </TableHeader>
+                        <TableBody>
+                          {results.map((item, index) => (
+                            <TableRow key={index}>
+                              <TableCell>{item.name}</TableCell>
+                              <TableCell>{item.phone}</TableCell>
+                              <TableCell>{item.location}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                      <div className="mt-4 flex justify-center">
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            setInput("Show me the next page of results")
+                            handleSubmit(new Event("submit") as any)
+                          }}
+                          disabled={isLoading}
+                        >
+                          Load More Results
+                        </Button>
+                      </div>
+                    </>
                   ) : (
                     <div className="text-center text-muted-foreground py-8">
                       <p>No data available yet.</p>
