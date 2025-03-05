@@ -26,21 +26,6 @@ type BreederData = {
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "https://scraping-ai-chat-production.up.railway.app" // Default fallback
 
-async function sendMessage(message: string) {
-  const res = await fetch(`${API_URL}/api/chat`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message }),
-  })
-
-  if (!res.ok) {
-    console.error("API error:", await res.text())
-    throw new Error("Failed to fetch response from API")
-  }
-
-  return res.json()
-}
-
 export default function ChatInterface() {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState("")
@@ -52,14 +37,11 @@ export default function ChatInterface() {
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [messages])
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!input.trim()) return
-
-    const urlRegex = /(https?:\/\/[^\s]+)/g
-    const urls = input.match(urlRegex) || []
 
     const userMessage = { role: "user" as const, content: input }
     setMessages((prev) => [...prev, userMessage])
@@ -68,6 +50,9 @@ export default function ChatInterface() {
     setError(null)
 
     try {
+      const urlRegex = /(https?:\/\/[^\s]+)/g
+      const urls = input.match(urlRegex) || []
+
       if (
         urls.length > 0 &&
         (input.toLowerCase().includes("get") ||
@@ -79,7 +64,7 @@ export default function ChatInterface() {
         const scrapeResponse = await fetch(`${API_URL}/api/scrape`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url: urls[0] }),
+          body: JSON.stringify({ url: urls[0], sessionId }),
         })
 
         if (!scrapeResponse.ok) {
@@ -93,11 +78,13 @@ export default function ChatInterface() {
         if (scrapeData.results && Array.isArray(scrapeData.results)) {
           setResults(scrapeData.results)
         }
+        if (scrapeData.sessionId) {
+          setSessionId(scrapeData.sessionId)
+        }
       }
 
       console.log("Sending request to API:", {
         message: userMessage.content,
-        urls,
         sessionId,
       })
       const response = await fetch(`${API_URL}/api/chat`, {
@@ -105,7 +92,6 @@ export default function ChatInterface() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: userMessage.content,
-          urls: urls,
           sessionId,
         }),
       })
@@ -121,14 +107,9 @@ export default function ChatInterface() {
         throw new Error(data.error)
       }
 
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: data.content || data.text || "No response from AI" },
-      ])
-      setSessionId(data.sessionId)
-
-      if (data.results && Array.isArray(data.results)) {
-        setResults(data.results)
+      setMessages((prev) => [...prev, { role: "assistant", content: data.content || "No response from AI" }])
+      if (data.sessionId) {
+        setSessionId(data.sessionId)
       }
     } catch (error) {
       console.error("Error:", error)
