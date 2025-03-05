@@ -101,7 +101,7 @@ app.all("/api/chat", async (req, res) => {
 
       // Call OpenAI API with gpt-3.5-turbo model
       const completion = await openai.chat.completions.create({
-        model: "gpt-3.5-turbo", // Changed from gpt-4 to gpt-3.5-turbo
+        model: "gpt-3.5-turbo",
         messages: [systemMessage, ...messages],
         stream: false,
       })
@@ -109,8 +109,20 @@ app.all("/api/chat", async (req, res) => {
       res.json(completion.choices[0].message)
     } catch (error) {
       console.error("❌ Error processing chat request:", error)
-      res.status(500).json({
-        error: "An error occurred while processing your request",
+
+      let errorMessage = "An error occurred while processing your request"
+      let statusCode = 500
+
+      if (error.response) {
+        console.error(error.response.status, error.response.data)
+        errorMessage = error.response.data.error.message
+        statusCode = error.response.status
+      } else if (error.message) {
+        errorMessage = error.message
+      }
+
+      res.status(statusCode).json({
+        error: errorMessage,
         details: error.message,
         stack: error.stack,
       })
