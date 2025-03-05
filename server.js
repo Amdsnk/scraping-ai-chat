@@ -92,147 +92,55 @@ app.post("/api/scrape", async (req, res) => {
       const sessionId = newSessionId
     }
 
-    // Handle pagination request
-    if (pagination) {
-      if (!session.lastUrl) {
-        return res.status(400).json({ error: "No previous URL to paginate" })
-      }
+    // Handle initial URL scraping or pagination
+    const scrapeUrl = pagination && session.lastUrl ? `${session.lastUrl}?page=${session.currentPage + 1}` : url
+    session.lastUrl = scrapeUrl
+    session.currentPage = pagination ? session.currentPage + 1 : 1
 
-      session.currentPage += 1
-      console.log(`🔍 Paginating to page ${session.currentPage} for URL: ${session.lastUrl}`)
+    console.log(`🔍 Scraping URL: ${scrapeUrl}`)
+    const response = await fetch(scrapeUrl)
+    const html = await response.text()
 
-      // Construct the paginated URL
-      const baseUrl = session.lastUrl.split("?")[0]
-      const paginatedUrl = `${baseUrl}?page=${session.currentPage}`
+    // Parse the HTML and extract breeder information
+    const $ = cheerio.load(html)
+    const newData = []
 
-      // Scrape the paginated URL
-      const response = await fetch(paginatedUrl)
-      const html = await response.text()
+    $("table tr").each((index, element) => {
+      if (index === 0) return // Skip header row
 
-      // Parse the HTML and extract breeder information
-      const $ = cheerio.load(html)
-      const newData = []
-
-      $("table tr").each((index, element) => {
-        if (index === 0) return // Skip header row
-
-        const columns = $(element).find("td")
-        if (columns.length >= 3) {
-          newData.push({
-            name: $(columns[0]).text().trim() || "-",
-            phone: $(columns[1]).text().trim() || "-",
-            location: $(columns[2]).text().trim() || "-",
-          })
-        }
-      })
-
-      // If we found new data, add it to the existing data
-      if (newData.length > 0) {
-        if (!session.scrapedData) {
-          session.scrapedData = []
-        }
-        session.scrapedData = [...session.scrapedData, ...newData]
-
-        // Store the combined data in the database
-        const { error: updateError } = await supabase.from("scraped_content").upsert([
-          {
-            url: session.lastUrl,
-            content: JSON.stringify(session.scrapedData),
-            scraped_at: new Date().toISOString(),
-            page_count: session.currentPage,
-          },
-        ])
-
-        if (updateError) {
-          console.error("❌ Error updating scraped content:", updateError)
-        }
-
-        return res.json({
-          message: `Page ${session.currentPage} scraped successfully`,
-          results: session.scrapedData,
-          sessionId,
-          page: session.currentPage,
-        })
-      } else {
-        return res.json({
-          message: "No more data found on next page",
-          results: session.scrapedData,
-          sessionId,
-          page: session.currentPage - 1,
+      const columns = $(element).find("td")
+      if (columns.length >= 3) {
+        newData.push({
+          name: $(columns[0]).text().trim() || "-",
+          phone: $(columns[1]).text().trim() || "-",
+          location: $(columns[2]).text().trim() || "-",
         })
       }
-    }
-
-    // Handle initial URL scraping
-    if (!url) {
-      return res.status(400).json({ error: "URL is required for initial scraping" })
-    }
-
-    // Store the URL for pagination
-    session.lastUrl = url
-    session.currentPage = 1
-
-    // Check if we already have this URL in the database
-    const { data: existingData, error: dbError } = await supabase
-      .from("scraped_content")
-      .select("*")
-      .eq("url", url)
-      .single()
-
-    if (dbError && dbError.code !== "PGRST116") {
-      console.error("❌ Supabase error:", dbError)
-      return res.status(500).json({ error: "Database error", details: dbError })
-    }
-
-    let scrapedData
-    if (existingData) {
-      console.log("✅ Found existing data for URL:", url)
-      scrapedData = JSON.parse(existingData.content)
-      session.currentPage = existingData.page_count || 1
-    } else {
-      // If not in database, scrape the URL
-      console.log("🔍 Scraping URL:", url)
-      const response = await fetch(url)
-      const html = await response.text()
-
-      // Parse the HTML and extract breeder information
-      const $ = cheerio.load(html)
-      scrapedData = []
-
-      $("table tr").each((index, element) => {
-        if (index === 0) return // Skip header row
-
-        const columns = $(element).find("td")
-        if (columns.length >= 3) {
-          scrapedData.push({
-            name: $(columns[0]).text().trim() || "-",
-            phone: $(columns[1]).text().trim() || "-",
-            location: $(columns[2]).text().trim() || "-",
-          })
-        }
-      })
-
-      // Store the scraped content in the database
-      const { error: insertError } = await supabase.from("scraped_content").insert([
-        {
-          url,
-          content: JSON.stringify(scrapedData),
-          scraped_at: new Date().toISOString(),
-          page_count: 1,
-        },
-      ])
-
-      if (insertError) {
-        console.error("❌ Error storing scraped content:", insertError)
-      }
-    }
+    })
 
     // Update session with scraped data
-    session.scrapedData = scrapedData
+    if (!session.scrapedData) {
+      session.scrapedData = []
+    }
+    session.scrapedData = pagination ? [...session.scrapedData, ...newData] : newData
+
+    // Store the scraped content in the database
+    const { error: upsertError } = await supabase.from("scraped_content").upsert([
+      {
+        url: scrapeUrl,
+        content: JSON.stringify(session.scrapedData),
+        scraped_at: new Date().toISOString(),
+        page_count: session.currentPage,
+      },
+    ])
+
+    if (upsertError) {
+      console.error("❌ Error storing scraped content:", upsertError)
+    }
 
     return res.json({
-      message: "URL scraped successfully",
-      results: scrapedData,
+      message: `Page ${session.currentPage} scraped successfully`,
+      results: session.scrapedData,
       sessionId,
       page: session.currentPage,
     })
