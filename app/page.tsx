@@ -20,7 +20,24 @@ type BreederData = {
   location: string;
 };
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "https://scraping-ai-chat-production.up.railway.app";
+const API_URL =
+  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ||
+  "https://scraping-ai-chat-production.up.railway.app"; // Default fallback
+
+async function sendMessage(message: string) {
+  const res = await fetch(`${API_URL}/api/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message }),
+  });
+
+  if (!res.ok) {
+    console.error("API error:", await res.text());
+    throw new Error("Failed to fetch response from API");
+  }
+
+  return res.json();
+}
 
 export default function ChatInterface() {
   const [messages, setMessages] = useState<Message[]>([]);
