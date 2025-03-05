@@ -84,17 +84,18 @@ app.get("/", (req, res) => {
   });
 });
 
-// Proxy /api/chat requests to Next.js API
 app.use("/api/chat", async (req, res) => {
   try {
     if (!process.env.API_URL) {
       throw new Error("API_URL is not defined in environment variables.");
     }
 
-    console.log("🔍 Proxying request to:", `${process.env.API_URL}/api/chat`);
+    const proxyUrl = `${process.env.API_URL}/api/chat`;
+
+    console.log("🔍 Proxying request to:", proxyUrl);
     console.log("📨 Request body:", req.body);
 
-    const nextResponse = await fetch(`${process.env.API_URL}/api/chat`, {
+    const nextResponse = await fetch(proxyUrl, {
       method: req.method,
       headers: {
         "Content-Type": "application/json",
@@ -102,6 +103,12 @@ app.use("/api/chat", async (req, res) => {
       },
       body: req.method !== "GET" ? JSON.stringify(req.body) : null,
     });
+
+    console.log("📩 Response status:", nextResponse.status);
+
+    if (!nextResponse.ok) {
+      throw new Error(`Upstream error: ${nextResponse.statusText}`);
+    }
 
     const data = await nextResponse.json();
     console.log("📩 Response from Next.js API:", data);
