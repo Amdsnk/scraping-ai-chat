@@ -1,18 +1,9 @@
-@@ -1,88 +1,36 @@
 "use client"
 
-import { useState, useEffect } from "react"
 import type React from "react"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import type { Message } from "../types/chat"
 
-interface Message {
-  role: "user" | "assistant"
-  content: string
-}
-// ... other imports and component code ...
-
-export function ChatComponent() {
 const ChatComponent: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState("")
@@ -28,14 +19,10 @@ const ChatComponent: React.FC = () => {
     return () => clearTimeout(timer)
   }, [cooldown])
 
-  const sendMessage = async () => {
-    if (input.trim() === "" || isLoading || cooldown > 0) return
-
-    const newMessage: Message = { role: "user", content: input }
-    setMessages([...messages, newMessage])
-    setInput("")
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (input.trim() === "" || isLoading || cooldown > 0) return
+
     setIsLoading(true)
     setError(null)
 
@@ -57,13 +44,15 @@ const ChatComponent: React.FC = () => {
       }
 
       const data = await response.json()
-      setMessages((prevMessages) => [...prevMessages, { role: "assistant", content: data.content }])
+      setMessages((prevMessages) => [
+        ...prevMessages,
+        { role: "user", content: input },
+        { role: "assistant", content: data.content },
+      ])
+      setInput("")
       setCooldown(20) // Set a 20-second cooldown between requests
-      // ... your API call code ...
     } catch (error) {
       console.error("Error sending message:", error)
-      setError(error.message)
-      setMessages((prevMessages) => [...prevMessages, { role: "assistant", content: error.message }])
       setError(error instanceof Error ? error.message : "An unknown error occurred")
       setMessages((prevMessages) => [
         ...prevMessages,
@@ -85,7 +74,7 @@ const ChatComponent: React.FC = () => {
         {isLoading && <div className="message assistant">Loading...</div>}
         {error && <div className="error-message">{error}</div>}
       </div>
-      <div className="chat-input">
+      <form onSubmit={handleSubmit} className="chat-input">
         <input
           type="text"
           value={input}
@@ -93,13 +82,12 @@ const ChatComponent: React.FC = () => {
           placeholder="Type your message..."
           disabled={isLoading || cooldown > 0}
         />
-        <button onClick={sendMessage} disabled={isLoading || cooldown > 0}>
+        <button type="submit" disabled={isLoading || cooldown > 0}>
           {isLoading ? "Sending..." : cooldown > 0 ? `Wait ${cooldown}s` : "Send"}
         </button>
-      </div>
+      </form>
     </div>
   )
-  // ... rest of your component code ...
 }
 
 export default ChatComponent
