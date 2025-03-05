@@ -192,19 +192,16 @@ app.all("/api/chat", async (req, res) => {
           return processedItem
         })
 
-        scrapedDataContext = `Currently available scraped data (${processedData.length} items):\n${JSON.stringify(processedData.slice(0, 20), null, 2)}\n\n`
+        scrapedDataContext = `You have access to the following scraped data (${processedData.length} items). DO NOT say you don't have access to this data:\n${JSON.stringify(processedData.slice(0, 20), null, 2)}\n\n`
 
         // Add a summary of the data
         scrapedDataContext += "Data summary:\n"
         const locations = new Set(processedData.map((item) => item.location).filter((loc) => loc && loc !== "-"))
         scrapedDataContext += `- Available locations: ${Array.from(locations).join(", ")}\n`
         scrapedDataContext += `- Total breeders found: ${processedData.length}\n\n`
-
-        // Add instructions for the AI
-        scrapedDataContext += "Instructions:\n"
-        scrapedDataContext += "1. When showing data, always include specific examples from the data.\n"
-        scrapedDataContext += "2. For filtering requests, show the matching results and their details.\n"
-        scrapedDataContext += "3. Replace any empty values with '-' in your responses.\n\n"
+      } else {
+        scrapedDataContext =
+          "No data has been scraped yet. If the user asks to scrape a URL, inform them that the data will be scraped and you'll analyze it in the next response.\n\n"
       }
 
       // Check if the message contains a filtering request
@@ -217,23 +214,26 @@ app.all("/api/chat", async (req, res) => {
             item[filterKey.toLowerCase()].toLowerCase().includes(filterValue.toLowerCase()),
         )
 
-        scrapedDataContext = `Filtered data (${filteredData.length} items):\n${JSON.stringify(filteredData, null, 2)}\n\n`
+        scrapedDataContext += `Filtered data (${filteredData.length} items):\n${JSON.stringify(filteredData, null, 2)}\n\n`
       }
 
       const systemMessage = {
         role: "system",
-        content: `You are an AI assistant that helps users understand web content and filter scraped data. 
+        content: `You are an AI assistant that helps users understand web content and analyze scraped data. 
         ${scrapedDataContext}
-        When answering questions, use the scraped or filtered data provided above. If the user asks to filter data, explain the filtering process and results.
-        IMPORTANT: DO NOT say you don't have access to the data. The data has already been scraped and is available to you.
-        If the user asks for the next page or more results, tell them you can fetch more data by asking for "next page" or "more results".
-        Always replace empty values with '-' in your responses.
-        When reporting on scraped or filtered data, always include the actual values, even if they are '-'.
+        Instructions:
+        1. Always use the scraped or filtered data provided above when answering questions.
+        2. If the user asks to scrape a new URL, inform them that the data will be scraped and you'll analyze it in the next response.
+        3. For filtering requests, explain the filtering process and show the matching results with their details.
+        4. Always replace empty values with '-' in your responses.
+        5. When reporting on scraped or filtered data, always include specific examples from the data.
+        6. If asked for more results or the next page, instruct the user to ask for "next page" or "more results".
         
         Format your responses like this:
-        1. First, acknowledge the request
-        2. Then, provide a summary of what was found
-        3. Finally, show specific examples from the data`,
+        1. Acknowledge the user's request
+        2. Provide a summary of the data or action taken
+        3. Show specific examples or details from the data
+        4. Offer suggestions for further analysis or actions the user can take`,
       }
 
       try {
