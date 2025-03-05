@@ -17,7 +17,6 @@ const log = (message, ...args) => {
 };
 
 log("🔍 Environment variables loaded");
-setTimeout(() => log("🔧 ENV VARIABLES:", process.env), 1000); // Wait for .env to load
 
 // ✅ CORS Configuration
 const allowedOrigins = [
@@ -27,7 +26,7 @@ const allowedOrigins = [
 
 const corsOptions = {
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin) || origin.endsWith(".vercel.app")) {
+    if (!origin || allowedOrigins.includes(origin) || /\.vercel\.app$/.test(origin)) {
       callback(null, true);
     } else {
       log("⛔ Blocked by CORS:", origin);
@@ -45,26 +44,20 @@ app.use(express.json({ limit: "10mb" }));
 
 // ✅ Initialize Supabase
 let supabase;
-try {
-  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    throw new Error("Supabase environment variables are missing.");
-  }
+if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
   supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
   log("✅ Supabase client initialized successfully");
-} catch (error) {
-  log("❌ Error initializing Supabase:", error);
+} else {
+  console.error("❌ Supabase environment variables are missing.");
 }
 
 // ✅ Initialize OpenAI
 let openai;
-try {
-  if (!process.env.OPENAI_API_KEY) {
-    throw new Error("OpenAI API key is missing.");
-  }
+if (process.env.OPENAI_API_KEY) {
   openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   log("✅ OpenAI client initialized successfully");
-} catch (error) {
-  log("❌ Error initializing OpenAI:", error);
+} else {
+  console.error("❌ OpenAI API key is missing.");
 }
 
 // ✅ Middleware for logging requests
@@ -91,17 +84,14 @@ app.get("/", (req, res) => {
   });
 });
 
-// ✅ FIX: Avoid Infinite Proxy Loop in `/api/chat`
+// ✅ Chat API Route (Fixed Proxy Handling)
 app.post("/api/chat", async (req, res) => {
   try {
     if (!process.env.API_URL) {
       throw new Error("API_URL is missing in environment variables.");
     }
 
-    const proxyUrl = process.env.API_URL.includes("scraping-ai-chat-production.up.railway.app")
-      ? "https://scraping-ai-chat-production.up.railway.app"
-      : `${process.env.API_URL}/api/chat`;
-
+    const proxyUrl = `${process.env.API_URL}/api/chat`;
     log("🔍 Proxying request to:", proxyUrl);
     log("📨 Request body:", req.body);
 
@@ -115,11 +105,9 @@ app.post("/api/chat", async (req, res) => {
       body: JSON.stringify(req.body),
     });
 
-    log("📩 Response status:", nextResponse.status);
-
     if (!nextResponse.ok) {
       const errorText = await nextResponse.text();
-      log(`❌ Upstream error: ${nextResponse.status} - ${errorText}`);
+      console.error(`❌ Upstream error: ${nextResponse.status} - ${errorText}`);
       return res.status(nextResponse.status).json({ error: "Upstream error", details: errorText });
     }
 
@@ -128,15 +116,9 @@ app.post("/api/chat", async (req, res) => {
 
     return res.status(200).json(data);
   } catch (error) {
-    log("❌ Proxy error:", error);
+    console.error("❌ Proxy error:", error);
     return res.status(500).json({ error: "Internal server error", details: error.message });
   }
-});
-
-// ✅ Global error handling middleware
-app.use((err, req, res, next) => {
-  log("❌ Error caught in middleware:", err);
-  res.status(500).json({ error: "Something went wrong!", details: err.message });
 });
 
 // ✅ 404 handler
@@ -152,10 +134,10 @@ app.listen(port, "0.0.0.0", () => {
 
 // ✅ Graceful error handling
 process.on("uncaughtException", (error) => {
-  log("❌ Uncaught Exception:", error);
+  console.error("❌ Uncaught Exception:", error);
   process.exit(1);
 });
 
 process.on("unhandledRejection", (reason, promise) => {
-  log("⚠️ Unhandled Rejection at:", promise, "reason:", reason);
+  console.error("⚠️ Unhandled Rejection at:", promise, "reason:", reason);
 });
