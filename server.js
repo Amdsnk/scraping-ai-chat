@@ -85,6 +85,8 @@ app.get("/", (req, res) => {
 });
 
 // ✅ Chat API Route (Fixed Proxy Handling)
+import AbortController from "abort-controller";
+
 app.post("/api/chat", async (req, res) => {
   try {
     if (!process.env.API_URL) {
@@ -94,32 +96,35 @@ app.post("/api/chat", async (req, res) => {
     const apiBaseUrl = process.env.API_URL.replace(/^https:/, "http:");
     const proxyUrl = `${apiBaseUrl}/api/chat`;
     log("🔍 Proxying request to:", proxyUrl);
-    log("📨 Request body:", req.body);
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000); // 10 seconds timeout
 
     const nextResponse = await fetch(proxyUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "User-Agent": "node-fetch", // ✅ Fix for API compatibility
+        "User-Agent": "node-fetch",
         ...(req.headers.authorization && { Authorization: req.headers.authorization }),
       },
       body: JSON.stringify(req.body),
+      signal: controller.signal,
     });
 
     clearTimeout(timeout); // Clear timeout if request succeeds
 
     if (!nextResponse.ok) {
       const errorText = await nextResponse.text();
-      console.error(`❌ Upstream error: ${nextResponse.status} - ${errorText}`);
+      log(`❌ Upstream error: ${nextResponse.status} - ${errorText}`);
       return res.status(nextResponse.status).json({ error: "Upstream error", details: errorText });
     }
 
     const data = await nextResponse.json();
     log("📩 Response from Next.js API:", data);
-
     return res.status(200).json(data);
+
   } catch (error) {
-    console.error("❌ Proxy error:", error);
+    log("❌ Proxy error:", error);
     return res.status(500).json({ error: "Internal server error", details: error.message });
   }
 });
