@@ -106,6 +106,7 @@ export default function ChatInterface() {
       console.log("Sending request to API:", {
         message: userMessage.content,
         sessionId,
+        urls,
       })
       const response = await fetch(`${API_URL}/api/chat`, {
         method: "POST",
@@ -113,7 +114,7 @@ export default function ChatInterface() {
         body: JSON.stringify({
           message: userMessage.content,
           sessionId,
-          urls: input.match(urlRegex) || [],
+          urls,
         }),
       })
 
