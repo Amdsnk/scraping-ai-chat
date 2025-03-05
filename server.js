@@ -3,6 +3,7 @@ import cors from "cors"
 import { createClient } from "@supabase/supabase-js"
 import OpenAI from "openai"
 import dotenv from "dotenv"
+import rateLimit from "express-rate-limit"
 
 dotenv.config()
 
@@ -21,6 +22,13 @@ const openai = new OpenAI({
 })
 console.log("✅ OpenAI client initialized successfully")
 
+// Rate limiting middleware
+const apiLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 3, // limit each IP to 3 requests per windowMs
+  message: "Too many requests, please try again later.",
+})
+
 // Middleware
 app.use(express.json())
 app.use(
@@ -30,6 +38,9 @@ app.use(
     credentials: true,
   }),
 )
+
+// Apply rate limiting to all requests
+app.use(apiLimiter)
 
 // Logging middleware
 app.use((req, res, next) => {
@@ -59,10 +70,8 @@ app.all("/api/chat", async (req, res) => {
 
       let messages
       if (req.body.message) {
-        // Handle single message format
         messages = [{ role: "user", content: req.body.message }]
       } else if (req.body.messages && Array.isArray(req.body.messages)) {
-        // Handle array of messages format
         messages = req.body.messages
       } else {
         return res.status(400).json({
@@ -78,7 +87,6 @@ app.all("/api/chat", async (req, res) => {
 
       if (urls.length > 0) {
         const { data, error } = await supabase.from("scraped_content").select("*").in("url", urls)
-
         if (error) {
           console.error("❌ Supabase error:", error)
         } else if (data) {
@@ -86,10 +94,8 @@ app.all("/api/chat", async (req, res) => {
         }
       }
 
-      // Format context for OpenAI
       const context = contextData.map((item) => `URL: ${item.url}\nContent: ${item.content}`).join("\n\n")
 
-      // Prepare system message with context
       const systemMessage = {
         role: "system",
         content: `You are an AI assistant that helps users understand web content. ${
@@ -99,30 +105,32 @@ app.all("/api/chat", async (req, res) => {
         }`,
       }
 
-      // Call OpenAI API with gpt-3.5-turbo model
-      const completion = await openai.chat.completions.create({
-        model: "gpt-3.5-turbo",
-        messages: [systemMessage, ...messages],
-        stream: false,
-      })
+      try {
+        const completion = await openai.chat.completions.create({
+          model: "gpt-4o-mini",
+          messages: [systemMessage, ...messages],
+          stream: false,
+        })
+        res.json(completion.choices[0].message)
+      } catch (openaiError) {
+        console.error("OpenAI API Error:", openaiError)
 
-      res.json(completion.choices[0].message)
+        let errorMessage = "An error occurred while processing your request."
+        if (openaiError.response && openaiError.response.status === 429) {
+          errorMessage = "Rate limit exceeded. Please try again later."
+        } else if (openaiError.message.includes("does not exist")) {
+          errorMessage = "The requested AI model is currently unavailable. Please try again later."
+        }
+
+        res.status(503).json({
+          error: "Service temporarily unavailable",
+          message: errorMessage,
+        })
+      }
     } catch (error) {
       console.error("❌ Error processing chat request:", error)
-
-      let errorMessage = "An error occurred while processing your request"
-      let statusCode = 500
-
-      if (error.response) {
-        console.error(error.response.status, error.response.data)
-        errorMessage = error.response.data.error.message
-        statusCode = error.response.status
-      } else if (error.message) {
-        errorMessage = error.message
-      }
-
-      res.status(statusCode).json({
-        error: errorMessage,
+      res.status(500).json({
+        error: "An error occurred while processing your request",
         details: error.message,
         stack: error.stack,
       })
@@ -136,3 +144,4 @@ app.all("/api/chat", async (req, res) => {
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Server is running on http://0.0.0.0:${PORT}`)
 })
+
