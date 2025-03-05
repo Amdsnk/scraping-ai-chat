@@ -106,39 +106,10 @@ app.post("/api/scrape", async (req, res) => {
 
     // Check if we're on the map page
     if ($(".us-map").length > 0) {
-      // We're on the map page, so we need to get the state links
-      const stateLinks = []
-      $("path").each((index, element) => {
-        const stateId = $(element).attr("id")
-        const stateUrl = `${scrapeUrl}${stateId}/`
-        stateLinks.push(stateUrl)
+      return res.status(400).json({
+        error:
+          "The provided URL leads to an interactive map page. Direct scraping of breeder information is not possible from this page. Please provide a specific state or breeder list URL for scraping.",
       })
-
-      // For demonstration, let's scrape the first state link
-      if (stateLinks.length > 0) {
-        const stateResponse = await fetch(stateLinks[0])
-        const stateHtml = await stateResponse.text()
-        const state$ = cheerio.load(stateHtml)
-
-        // Now parse the state page for breeder information
-        const newData = []
-        state$("table tr").each((index, element) => {
-          if (index === 0) return // Skip header row
-
-          const columns = $(element).find("td")
-          if (columns.length >= 3) {
-            newData.push({
-              name: $(columns[0]).text().trim() || "-",
-              phone: $(columns[1]).text().trim() || "-",
-              location: $(columns[2]).text().trim() || "-",
-            })
-          }
-        })
-
-        session.scrapedData = newData
-      } else {
-        session.scrapedData = []
-      }
     } else {
       // If we're not on the map page, use the original scraping logic
       const newData = []
@@ -154,6 +125,12 @@ app.post("/api/scrape", async (req, res) => {
           })
         }
       })
+
+      if (newData.length === 0) {
+        return res.status(404).json({
+          error: "No breeder information found on the provided URL. Please check the URL and try again.",
+        })
+      }
 
       session.scrapedData = newData
     }
