@@ -57,8 +57,10 @@ app.all("/api/chat", async (req, res) => {
     try {
       const { messages, urls } = req.body
 
+      console.log("Received request body:", JSON.stringify(req.body, null, 2))
+
       if (!messages || !Array.isArray(messages)) {
-        return res.status(400).json({ error: "Invalid request. Messages array is required." })
+        return res.status(400).json({ error: "Invalid request. Messages array is required.", receivedBody: req.body })
       }
 
       // Process the chat request
@@ -100,6 +102,7 @@ app.all("/api/chat", async (req, res) => {
       res.status(500).json({
         error: "An error occurred while processing your request",
         details: error.message,
+        stack: error.stack,
       })
     }
   } else {
