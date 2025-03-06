@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-The AI Web Scraping Chat project began as a challenge to create an API for AI-assisted web scraping. I took this concept and expanded it into a comprehensive full-stack web application, demonstrating my ability to not only meet but exceed project requirements.
+The AI Web Scraping Chat project began as a challenge to create an API for AI-assisted web scraping. I took this concept and expanded it into a comprehensive full-stack web application.
 
 ### Original Task
 The initial challenge was to create an API that would:
@@ -13,7 +13,7 @@ The initial challenge was to create an API that would:
 - Return results in a specific JSON format
 
 ### Project Evolution
-I expanded this concept into a full web application while ensuring that the core API requirements were not only met but enhanced. This showcases my ability to see the bigger picture and create user-friendly solutions that go beyond basic specifications.
+I expanded this concept into a full web application while ensuring that the core API requirements were not only met but enhanced.
 
 ![image](https://github.com/user-attachments/assets/3aa24aa7-530c-46d0-a38b-d9b931dc2db0)
 
