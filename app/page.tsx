@@ -84,6 +84,16 @@ export default function ChatInterface() {
         ? { start: Number.parseInt(pageRangeMatch[1]), end: Number.parseInt(pageRangeMatch[2]) }
         : null
 
+      // Make sure we're showing the correct message for page range requests
+      if (pageRange) {
+        console.log(`Processing page range request: ${pageRange.start} to ${pageRange.end}`)
+
+        // Clear any previous results when making a new page range request with a URL
+        if (urls.length > 0) {
+          setResults([])
+        }
+      }
+
       let currentResults = results // Store current results
 
       // Add temporary message for scraping status
@@ -122,93 +132,121 @@ export default function ChatInterface() {
         )
 
         const controller = new AbortController()
-        const timeoutId = setTimeout(() => controller.abort(), 25000) // 25 second timeout
+        const timeoutId = setTimeout(() => {
+          controller.abort()
+          console.log("Request timed out, aborting fetch")
+        }, 25000) // 25 second timeout
 
-        const scrapeResponse = await fetch(`${API_URL}/api/scrape`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            url: urls[0] || undefined,
-            pagination: isPaginationRequest,
-            pageRange: pageRange,
-            sessionId,
-          }),
-          signal: controller.signal,
-        })
+        try {
+          const scrapeResponse = await fetch(`${API_URL}/api/scrape`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              url: urls[0] || undefined,
+              pagination: isPaginationRequest,
+              pageRange: pageRange,
+              sessionId,
+            }),
+            signal: controller.signal,
+          })
 
-        clearTimeout(timeoutId)
+          clearTimeout(timeoutId)
 
-        if (!scrapeResponse.ok) {
-          const errorData = await scrapeResponse.json()
-          throw new Error(errorData.error || "An error occurred while scraping the website")
-        }
+          if (!scrapeResponse.ok) {
+            const errorData = await scrapeResponse.json()
+            throw new Error(errorData.error || "An error occurred while scraping the website")
+          }
 
-        const scrapeData = await scrapeResponse.json()
-        console.log("Scrape response:", scrapeData)
-        if (scrapeData.results && Array.isArray(scrapeData.results)) {
-          currentResults = scrapeData.results // Update current results
-          setResults(currentResults)
+          const scrapeData = await scrapeResponse.json()
+          console.log("Scrape response:", scrapeData)
 
-          // After successful scraping, send a follow-up request to analyze the data
-          if (currentResults.length > 0) {
-            console.log("Sending follow-up analysis request with scraped data")
-            const analysisMessage = "Analyze the data you just scraped"
+          if (scrapeData.results && Array.isArray(scrapeData.results)) {
+            // For page range requests, replace the current results instead of appending
+            if (pageRange) {
+              currentResults = scrapeData.results
+            } else if (isPaginationRequest && results.length > 0) {
+              // For pagination requests, we might want to append to existing results
+              // But we need to deduplicate
+              const existingIds = new Set(
+                results.map((item) => `${item.name}-${item.phone}-${item.location}`.toLowerCase().replace(/\s+/g, "")),
+              )
 
+              const newItems = scrapeData.results.filter(
+                (item) =>
+                  !existingIds.has(`${item.name}-${item.phone}-${item.location}`.toLowerCase().replace(/\s+/g, "")),
+              )
+
+              currentResults = [...results, ...newItems]
+            } else {
+              currentResults = scrapeData.results
+            }
+
+            setResults(currentResults)
+
+            // After successful scraping, send a follow-up request to analyze the data
+            if (currentResults.length > 0) {
+              console.log("Sending follow-up analysis request with scraped data")
+              const analysisMessage = "Analyze the data you just scraped"
+
+              // Remove the temporary message
+              setMessages((prev) => {
+                const updatedMessages = [...prev]
+                updatedMessages.pop() // Remove the last message
+                return updatedMessages
+              })
+
+              const analysisResponse = await fetch(`${API_URL}/api/chat`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  message: analysisMessage,
+                  sessionId: scrapeData.sessionId || sessionId,
+                  scrapedData: currentResults,
+                  isFollowUp: true,
+                  originalQuery: userMessage.content,
+                }),
+              })
+
+              if (analysisResponse.ok) {
+                const analysisData = await analysisResponse.json()
+                if (!analysisData.error) {
+                  // Add the analysis response
+                  setMessages((prev) => [
+                    ...prev,
+                    {
+                      role: "assistant",
+                      content: analysisData.content,
+                    },
+                  ])
+
+                  if (analysisData.sessionId) {
+                    setSessionId(analysisData.sessionId)
+                  }
+
+                  // We've already handled the response, so return early
+                  setIsLoading(false)
+                  setScrapeProgress(null)
+                  if (requestTimeout) clearTimeout(requestTimeout)
+                  return
+                }
+              }
+            }
+          } else if (scrapeData.error) {
             // Remove the temporary message
             setMessages((prev) => {
               const updatedMessages = [...prev]
               updatedMessages.pop() // Remove the last message
               return updatedMessages
             })
-
-            const analysisResponse = await fetch(`${API_URL}/api/chat`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                message: analysisMessage,
-                sessionId: scrapeData.sessionId || sessionId,
-                scrapedData: currentResults,
-                isFollowUp: true,
-                originalQuery: userMessage.content,
-              }),
-            })
-
-            if (analysisResponse.ok) {
-              const analysisData = await analysisResponse.json()
-              if (!analysisData.error) {
-                // Add the analysis response
-                setMessages((prev) => [
-                  ...prev,
-                  {
-                    role: "assistant",
-                    content: analysisData.content,
-                  },
-                ])
-
-                if (analysisData.sessionId) {
-                  setSessionId(analysisData.sessionId)
-                }
-
-                // We've already handled the response, so return early
-                setIsLoading(false)
-                setScrapeProgress(null)
-                if (requestTimeout) clearTimeout(requestTimeout)
-                return
-              }
-            }
+            throw new Error(scrapeData.error)
           }
-        } else if (scrapeData.error) {
-          // Remove the temporary message
-          setMessages((prev) => {
-            const updatedMessages = [...prev]
-            updatedMessages.pop() // Remove the last message
-            return updatedMessages
-          })
-          throw new Error(scrapeData.error)
-        }
 
-        if (scrapeData.sessionId) {
-          setSessionId(scrapeData.sessionId)
+          if (scrapeData.sessionId) {
+            setSessionId(scrapeData.sessionId)
+          }
+        } catch (error) {
+          clearTimeout(timeoutId)
+          throw error
         }
       }
 
