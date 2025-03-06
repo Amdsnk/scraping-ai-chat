@@ -75,9 +75,7 @@ function filterData(data, filterCriteria) {
   })
 }
 
-// Replace the scrapeBreederPage function with this improved version that better handles pagination
-
-// Simplified function to scrape a specific page
+// Update the scrapeBreederPage function to better handle pagination
 async function scrapeBreederPage(url, pageNum) {
   try {
     // For this specific website, construct the pagination URL
@@ -97,11 +95,18 @@ async function scrapeBreederPage(url, pageNum) {
 
     if (!response.ok) {
       console.error(`Failed to fetch page ${pageNum}: ${response.status} ${response.statusText}`)
-      return { data: [], hasMorePages: false }
+      return { data: [], hasMorePages: false, totalEntries: 0 }
     }
 
     const html = await response.text()
     const $ = cheerio.load(html)
+
+    // Extract total entries from the page
+    const showingText = $("body")
+      .text()
+      .match(/Showing .* of (\d+) entries/)
+    const totalEntries = showingText ? Number.parseInt(showingText[1]) : 0
+    const entriesPerPage = 25 // This website shows 25 entries per page
 
     // Extract data from the table
     const breeders = []
@@ -127,20 +132,20 @@ async function scrapeBreederPage(url, pageNum) {
       }
     })
 
-    // Check if there are more pages by looking for pagination links
-    const paginationLinks = $(".page-numbers")
-    const hasMorePages =
-      paginationLinks.length > 0 &&
-      paginationLinks.filter((i, el) => {
-        const text = $(el).text().trim()
-        return !isNaN(Number.parseInt(text)) && Number.parseInt(text) > pageNum
-      }).length > 0
+    // Check if there are more pages
+    const currentEntries = (pageNum - 1) * entriesPerPage + breeders.length
+    const hasMorePages = currentEntries < totalEntries
 
-    console.log(`Found ${breeders.length} breeders on page ${pageNum}, hasMorePages: ${hasMorePages}`)
-    return { data: breeders, hasMorePages }
+    console.log(`Found ${breeders.length} breeders on page ${pageNum}, total entries: ${totalEntries}`)
+    return {
+      data: breeders,
+      hasMorePages,
+      totalEntries,
+      entriesPerPage,
+    }
   } catch (error) {
     console.error(`Error scraping page ${pageNum}:`, error)
-    return { data: [], hasMorePages: false }
+    return { data: [], hasMorePages: false, totalEntries: 0, entriesPerPage: 25 }
   }
 }
 
@@ -184,21 +189,32 @@ app.post("/api/scrape", async (req, res) => {
       const start = Math.max(1, pageRange.start)
       const end = Math.min(start + 5, pageRange.end) // Limit to 5 pages max
 
-      // Use a Map to deduplicate results by ID
+      // Use a Map to deduplicate results
       const resultsMap = new Map()
+      let totalEntries = 0
+      let entriesPerPage = 25
 
       // Scrape each page in the range
       for (let page = start; page <= end; page++) {
-        const { data: pageData, hasMorePages } = await scrapeBreederPage(targetUrl, page)
+        const {
+          data: pageData,
+          hasMorePages,
+          totalEntries: total,
+          entriesPerPage: perPage,
+        } = await scrapeBreederPage(targetUrl, page)
 
         if (pageData.length === 0) {
           console.log(`No data found on page ${page}, stopping pagination`)
           break
         }
 
+        // Update our pagination info
+        totalEntries = total
+        entriesPerPage = perPage
+
         // Add to results map for deduplication
         pageData.forEach((item) => {
-          if (item.id) {
+          if (item.id && !resultsMap.has(item.id)) {
             resultsMap.set(item.id, item)
           }
         })
@@ -216,12 +232,16 @@ app.post("/api/scrape", async (req, res) => {
       }
 
       // Convert map back to array and remove the temporary ID field
-      results = Array.from(resultsMap.values()).map((item) => {
-        const { id, ...rest } = item
-        return rest
-      })
+      results = Array.from(resultsMap.values())
+        .map((item) => {
+          const { id, ...rest } = item
+          return rest
+        })
+        // Limit results to the expected number of entries for the requested pages
+        .slice(0, (end - start + 1) * entriesPerPage)
 
       session.currentPage = end
+      console.log(`Returning ${results.length} results for pages ${start} to ${end}`)
     }
     // Handle "next page" requests
     else if (pagination) {
