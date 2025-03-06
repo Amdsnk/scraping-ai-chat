@@ -75,12 +75,15 @@ function filterData(data, filterCriteria) {
   })
 }
 
+// Replace the scrapeBreederPage function with this improved version that better handles pagination
+
 // Simplified function to scrape a specific page
 async function scrapeBreederPage(url, pageNum) {
   try {
     // For this specific website, construct the pagination URL
     // First page doesn't need a page parameter
-    const pageUrl = pageNum === 1 ? url : `${url}?page=${pageNum}`
+    const baseUrl = url.split("?")[0] // Remove any existing query parameters
+    const pageUrl = pageNum === 1 ? baseUrl : `${baseUrl}?page=${pageNum}`
 
     console.log(`Scraping page ${pageNum} from: ${pageUrl}`)
 
@@ -94,7 +97,7 @@ async function scrapeBreederPage(url, pageNum) {
 
     if (!response.ok) {
       console.error(`Failed to fetch page ${pageNum}: ${response.status} ${response.statusText}`)
-      return []
+      return { data: [], hasMorePages: false }
     }
 
     const html = await response.text()
@@ -108,19 +111,36 @@ async function scrapeBreederPage(url, pageNum) {
 
       const columns = $(element).find("td")
       if (columns.length >= 3) {
+        const name = $(columns[0]).text().trim() || "-"
+        const phone = $(columns[1]).text().trim() || "-"
+        const location = $(columns[2]).text().trim() || "-"
+
+        // Create a unique ID from the data to help with deduplication
+        const uniqueId = `${name}-${phone}-${location}`.toLowerCase().replace(/\s+/g, "")
+
         breeders.push({
-          name: $(columns[0]).text().trim() || "-",
-          phone: $(columns[1]).text().trim() || "-",
-          location: $(columns[2]).text().trim() || "-",
+          id: uniqueId,
+          name,
+          phone,
+          location,
         })
       }
     })
 
-    console.log(`Found ${breeders.length} breeders on page ${pageNum}`)
-    return breeders
+    // Check if there are more pages by looking for pagination links
+    const paginationLinks = $(".page-numbers")
+    const hasMorePages =
+      paginationLinks.length > 0 &&
+      paginationLinks.filter((i, el) => {
+        const text = $(el).text().trim()
+        return !isNaN(Number.parseInt(text)) && Number.parseInt(text) > pageNum
+      }).length > 0
+
+    console.log(`Found ${breeders.length} breeders on page ${pageNum}, hasMorePages: ${hasMorePages}`)
+    return { data: breeders, hasMorePages }
   } catch (error) {
     console.error(`Error scraping page ${pageNum}:`, error)
-    return []
+    return { data: [], hasMorePages: false }
   }
 }
 
@@ -153,6 +173,9 @@ app.post("/api/scrape", async (req, res) => {
     // Initialize results array
     let results = []
 
+    // Then update the scrape endpoint to handle page ranges correctly
+    // Replace the page range handling section in the /api/scrape endpoint with this:
+
     // Handle page range requests (e.g., "page 1 to 2")
     if (pageRange && pageRange.start && pageRange.end) {
       console.log(`Processing page range request: pages ${pageRange.start} to ${pageRange.end}`)
@@ -161,22 +184,42 @@ app.post("/api/scrape", async (req, res) => {
       const start = Math.max(1, pageRange.start)
       const end = Math.min(start + 5, pageRange.end) // Limit to 5 pages max
 
+      // Use a Map to deduplicate results by ID
+      const resultsMap = new Map()
+
       // Scrape each page in the range
       for (let page = start; page <= end; page++) {
-        const pageData = await scrapeBreederPage(targetUrl, page)
+        const { data: pageData, hasMorePages } = await scrapeBreederPage(targetUrl, page)
 
         if (pageData.length === 0) {
           console.log(`No data found on page ${page}, stopping pagination`)
           break
         }
 
-        results = [...results, ...pageData]
+        // Add to results map for deduplication
+        pageData.forEach((item) => {
+          if (item.id) {
+            resultsMap.set(item.id, item)
+          }
+        })
+
+        // If we've reached the end of available pages, break
+        if (!hasMorePages && page < end) {
+          console.log(`No more pages available after page ${page}`)
+          break
+        }
 
         // Add a small delay between requests
         if (page < end) {
           await new Promise((resolve) => setTimeout(resolve, 500))
         }
       }
+
+      // Convert map back to array and remove the temporary ID field
+      results = Array.from(resultsMap.values()).map((item) => {
+        const { id, ...rest } = item
+        return rest
+      })
 
       session.currentPage = end
     }
@@ -185,7 +228,7 @@ app.post("/api/scrape", async (req, res) => {
       const nextPage = session.currentPage + 1
       console.log(`Processing pagination request for page ${nextPage}`)
 
-      const pageData = await scrapeBreederPage(targetUrl, nextPage)
+      const { data: pageData, hasMorePages } = await scrapeBreederPage(targetUrl, nextPage)
 
       if (pageData.length === 0) {
         return res.status(404).json({
@@ -193,11 +236,30 @@ app.post("/api/scrape", async (req, res) => {
         })
       }
 
-      // If we already have data, combine it with the new data
+      // If we already have data, combine it with the new data (with deduplication)
       if (session.scrapedData && Array.isArray(session.scrapedData)) {
-        results = [...session.scrapedData, ...pageData]
+        // Create a map of existing items by a unique key
+        const existingItems = new Map()
+        session.scrapedData.forEach((item) => {
+          const uniqueId = `${item.name}-${item.phone}-${item.location}`.toLowerCase().replace(/\s+/g, "")
+          existingItems.set(uniqueId, item)
+        })
+
+        // Add new items, avoiding duplicates
+        pageData.forEach((item) => {
+          if (item.id && !existingItems.has(item.id)) {
+            const { id, ...rest } = item
+            existingItems.set(item.id, rest)
+          }
+        })
+
+        results = Array.from(existingItems.values())
       } else {
-        results = pageData
+        // Just use the new data if we don't have existing data
+        results = pageData.map((item) => {
+          const { id, ...rest } = item
+          return rest
+        })
       }
 
       session.currentPage = nextPage
@@ -206,7 +268,7 @@ app.post("/api/scrape", async (req, res) => {
     else {
       console.log(`Processing initial request for page 1`)
 
-      const pageData = await scrapeBreederPage(targetUrl, 1)
+      const { data: pageData } = await scrapeBreederPage(targetUrl, 1)
 
       if (pageData.length === 0) {
         return res.status(404).json({
@@ -214,7 +276,12 @@ app.post("/api/scrape", async (req, res) => {
         })
       }
 
-      results = pageData
+      // Remove the temporary ID field
+      results = pageData.map((item) => {
+        const { id, ...rest } = item
+        return rest
+      })
+
       session.currentPage = 1
     }
 
