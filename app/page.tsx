@@ -35,6 +35,7 @@ export default function ChatInterface() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const [error, setError] = useState<string | null>(null)
   const [scrapeProgress, setScrapeProgress] = useState<string | null>(null)
+  const [requestTimeout, setRequestTimeout] = useState<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -50,6 +51,24 @@ export default function ChatInterface() {
     setIsLoading(true)
     setError(null)
     setScrapeProgress(null)
+
+    // Set a timeout to prevent endless loading
+    const timeout = setTimeout(() => {
+      if (isLoading) {
+        setIsLoading(false)
+        setError("Request timed out. Please try again.")
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content:
+              "The request timed out. This could be due to server load or connectivity issues. Please try again.",
+          },
+        ])
+      }
+    }, 30000) // 30 second timeout
+
+    setRequestTimeout(timeout)
 
     try {
       const urlRegex = /(https?:\/\/[^\s]+)/g
@@ -101,6 +120,10 @@ export default function ChatInterface() {
           "Sending scrape request for:",
           pageRange ? `pages ${pageRange.start}-${pageRange.end}` : isPaginationRequest ? "pagination" : urls[0],
         )
+
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 25000) // 25 second timeout
+
         const scrapeResponse = await fetch(`${API_URL}/api/scrape`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -110,7 +133,10 @@ export default function ChatInterface() {
             pageRange: pageRange,
             sessionId,
           }),
+          signal: controller.signal,
         })
+
+        clearTimeout(timeoutId)
 
         if (!scrapeResponse.ok) {
           const errorData = await scrapeResponse.json()
@@ -166,6 +192,7 @@ export default function ChatInterface() {
                 // We've already handled the response, so return early
                 setIsLoading(false)
                 setScrapeProgress(null)
+                if (requestTimeout) clearTimeout(requestTimeout)
                 return
               }
             }
@@ -239,14 +266,16 @@ export default function ChatInterface() {
     } finally {
       setIsLoading(false)
       setScrapeProgress(null)
+      if (requestTimeout) clearTimeout(requestTimeout)
     }
   }
 
+  // Clean up timeout on unmount
   useEffect(() => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: "smooth" })
+    return () => {
+      if (requestTimeout) clearTimeout(requestTimeout)
     }
-  }, [messages.length])
+  }, [requestTimeout])
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50 p-4">
