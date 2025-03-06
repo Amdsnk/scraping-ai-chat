@@ -172,7 +172,7 @@ export default function ChatInterface() {
               )
 
               const newItems = scrapeData.results.filter(
-                (item) =>
+                (item: BreederData) =>
                   !existingIds.has(`${item.name}-${item.phone}-${item.location}`.toLowerCase().replace(/\s+/g, "")),
               )
 
