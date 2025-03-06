@@ -1,6 +1,19 @@
-# AI Web Scraping Chat
+# AI Web Scraping Chat: From API to Full-Stack Application
 
-A powerful web application that combines AI with web scraping capabilities to extract, analyze, and interact with data from websites. This project allows users to scrape data from websites and use natural language to analyze and filter the results.
+## Project Overview
+
+The AI Web Scraping Chat project began as a challenge to create an API for AI-assisted web scraping. I took this concept and expanded it into a comprehensive full-stack web application, demonstrating my ability to not only meet but exceed project requirements.
+
+### Original Task
+The initial challenge was to create an API that would:
+- Use AI to scrape data from a given URL (e.g., https://herefordsondemand.com/find-a-breeder/)
+- Allow users to chat with an AI about the scraped data
+- Handle pagination in scraping
+- Maintain chat sessions for contextual interactions
+- Return results in a specific JSON format
+
+### Project Evolution
+I expanded this concept into a full web application while ensuring that the core API requirements were not only met but enhanced. This showcases my ability to see the bigger picture and create user-friendly solutions that go beyond basic specifications.
 
 ![image](https://github.com/user-attachments/assets/3aa24aa7-530c-46d0-a38b-d9b931dc2db0)
 
