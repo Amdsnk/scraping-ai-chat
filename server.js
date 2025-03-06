@@ -75,44 +75,40 @@ function filterData(data, filterCriteria) {
   })
 }
 
-// Function to scrape data from a page
-async function scrapePageData(url, pageNum) {
-  console.log(`🔍 Scraping page ${pageNum} from URL: ${url}`)
-
-  // Extract the base URL without any existing parameters
-  const baseUrl = url.split("?")[0]
-
-  // For this specific website, construct the pagination URL
-  const pageUrl = pageNum === 1 ? baseUrl : `${baseUrl}?page=${pageNum}`
-
-  console.log(`Attempting to fetch: ${pageUrl}`)
-
+// Simplified function to scrape a specific page
+async function scrapeBreederPage(url, pageNum) {
   try {
-    const response = await fetch(pageUrl)
+    // For this specific website, construct the pagination URL
+    // First page doesn't need a page parameter
+    const pageUrl = pageNum === 1 ? url : `${url}?page=${pageNum}`
+
+    console.log(`Scraping page ${pageNum} from: ${pageUrl}`)
+
+    const response = await fetch(pageUrl, {
+      timeout: 10000, // 10 second timeout
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+      },
+    })
 
     if (!response.ok) {
       console.error(`Failed to fetch page ${pageNum}: ${response.status} ${response.statusText}`)
-      return { data: [], hasMorePages: false }
+      return []
     }
 
     const html = await response.text()
     const $ = cheerio.load(html)
 
-    // Check if we have a table with data
-    const tables = $("table")
-    if (tables.length === 0) {
-      console.log(`No table found on page ${pageNum}`)
-      return { data: [], hasMorePages: false }
-    }
-
-    // Parse the page
-    const pageData = []
+    // Extract data from the table
+    const breeders = []
     $("table tr").each((index, element) => {
-      if (index === 0) return // Skip header row
+      // Skip header row
+      if (index === 0) return
 
       const columns = $(element).find("td")
       if (columns.length >= 3) {
-        pageData.push({
+        breeders.push({
           name: $(columns[0]).text().trim() || "-",
           phone: $(columns[1]).text().trim() || "-",
           location: $(columns[2]).text().trim() || "-",
@@ -120,21 +116,11 @@ async function scrapePageData(url, pageNum) {
       }
     })
 
-    // Check if there are more pages by looking for pagination links
-    // This is specific to the website structure
-    const paginationLinks = $(".page-numbers")
-    const hasMorePages =
-      paginationLinks.length > 0 &&
-      paginationLinks.filter((i, el) => {
-        const text = $(el).text().trim()
-        return !isNaN(Number.parseInt(text)) && Number.parseInt(text) > pageNum
-      }).length > 0
-
-    console.log(`Found ${pageData.length} items on page ${pageNum}, hasMorePages: ${hasMorePages}`)
-    return { data: pageData, hasMorePages }
+    console.log(`Found ${breeders.length} breeders on page ${pageNum}`)
+    return breeders
   } catch (error) {
     console.error(`Error scraping page ${pageNum}:`, error)
-    return { data: [], hasMorePages: false }
+    return []
   }
 }
 
@@ -151,171 +137,96 @@ app.post("/api/scrape", async (req, res) => {
       session = sessions.get(sessionId)
     } else {
       newSessionId = uuidv4()
-      session = {
-        messages: [],
-        scrapedData: null,
-        currentPage: 1,
-        lastUrl: null,
-        allScrapedData: [],
-        pageData: {}, // Store data by page number
-      }
+      session = { messages: [], scrapedData: null, currentPage: 1, lastUrl: null }
       sessions.set(newSessionId, session)
     }
 
     // Store the URL in the session
     const targetUrl = url || session.lastUrl
-    if (targetUrl) {
-      session.lastUrl = targetUrl
-    } else {
+    if (!targetUrl) {
       return res.status(400).json({
         error: "No URL provided and no previous URL in session",
       })
     }
+    session.lastUrl = targetUrl
 
-    // Initialize scraped results array
-    let scrapedResults = []
+    // Initialize results array
+    let results = []
 
-    // For page range requests, we'll only return data from the requested pages
+    // Handle page range requests (e.g., "page 1 to 2")
     if (pageRange && pageRange.start && pageRange.end) {
-      console.log(`🔍 Scraping pages ${pageRange.start} to ${pageRange.end}`)
+      console.log(`Processing page range request: pages ${pageRange.start} to ${pageRange.end}`)
 
       // Validate page range
-      if (pageRange.start < 1) {
-        pageRange.start = 1
-      }
-
-      if (pageRange.end < pageRange.start) {
-        pageRange.end = pageRange.start
-      }
-
-      if (pageRange.end - pageRange.start > 5) {
-        // Limit to reasonable range to prevent abuse
-        pageRange.end = pageRange.start + 5
-      }
-
-      // Initialize page data storage if needed
-      if (!session.pageData) {
-        session.pageData = {}
-      }
+      const start = Math.max(1, pageRange.start)
+      const end = Math.min(start + 5, pageRange.end) // Limit to 5 pages max
 
       // Scrape each page in the range
-      for (let page = pageRange.start; page <= pageRange.end; page++) {
-        // Check if we already have data for this page
-        if (!session.pageData[page]) {
-          const { data: pageData, hasMorePages } = await scrapePageData(targetUrl, page)
+      for (let page = start; page <= end; page++) {
+        const pageData = await scrapeBreederPage(targetUrl, page)
 
-          if (pageData.length > 0) {
-            // Store this page's data separately
-            session.pageData[page] = pageData
+        if (pageData.length === 0) {
+          console.log(`No data found on page ${page}, stopping pagination`)
+          break
+        }
 
-            // If we've reached the end of available pages, break
-            if (!hasMorePages && page < pageRange.end) {
-              console.log(`No more pages available after page ${page}`)
-              break
-            }
-          } else {
-            // If no data on this page, we might have reached the end
-            console.log(`No data found on page ${page}, might be the last page`)
-            break
-          }
+        results = [...results, ...pageData]
 
-          // Add a small delay to avoid overwhelming the server
+        // Add a small delay between requests
+        if (page < end) {
           await new Promise((resolve) => setTimeout(resolve, 500))
-        } else {
-          console.log(`Using cached data for page ${page}`)
         }
       }
 
-      // Combine only the requested pages into the results
-      scrapedResults = []
-      for (let page = pageRange.start; page <= pageRange.end; page++) {
-        if (session.pageData[page]) {
-          scrapedResults = [...scrapedResults, ...session.pageData[page]]
-        }
-      }
-
-      // Update the session's current page and scraped data
-      session.currentPage = pageRange.end
-      session.scrapedData = scrapedResults
-
-      console.log(`Combined ${scrapedResults.length} items from pages ${pageRange.start} to ${pageRange.end}`)
+      session.currentPage = end
     }
-    // Handle single page or next page request
+    // Handle "next page" requests
     else if (pagination) {
-      // For pagination requests, increment the page number
-      session.currentPage = session.currentPage + 1
+      const nextPage = session.currentPage + 1
+      console.log(`Processing pagination request for page ${nextPage}`)
 
-      // Initialize page data storage if needed
-      if (!session.pageData) {
-        session.pageData = {}
+      const pageData = await scrapeBreederPage(targetUrl, nextPage)
+
+      if (pageData.length === 0) {
+        return res.status(404).json({
+          error: `No more data found on page ${nextPage}. You might have reached the end of the results.`,
+        })
       }
 
-      // Check if we already have data for this page
-      if (!session.pageData[session.currentPage]) {
-        const { data: pageData, hasMorePages } = await scrapePageData(targetUrl, session.currentPage)
-
-        if (pageData.length > 0) {
-          // Store this page's data separately
-          session.pageData[session.currentPage] = pageData
-        } else {
-          return res.status(404).json({
-            error: `No more data found on page ${session.currentPage}. You might have reached the end of the results.`,
-          })
-        }
+      // If we already have data, combine it with the new data
+      if (session.scrapedData && Array.isArray(session.scrapedData)) {
+        results = [...session.scrapedData, ...pageData]
       } else {
-        console.log(`Using cached data for page ${session.currentPage}`)
+        results = pageData
       }
 
-      // Combine all pages up to the current page
-      scrapedResults = []
-      for (let page = 1; page <= session.currentPage; page++) {
-        if (session.pageData[page]) {
-          scrapedResults = [...scrapedResults, ...session.pageData[page]]
-        }
-      }
-
-      // Update the session's scraped data
-      session.scrapedData = scrapedResults
-
-      console.log(`Combined ${scrapedResults.length} items from pages 1 to ${session.currentPage}`)
+      session.currentPage = nextPage
     }
-    // Initial request without pagination
+    // Initial request (just page 1)
     else {
-      // For initial requests, just get page 1
-      session.currentPage = 1
+      console.log(`Processing initial request for page 1`)
 
-      // Initialize page data storage
-      session.pageData = {}
+      const pageData = await scrapeBreederPage(targetUrl, 1)
 
-      const { data: pageData } = await scrapePageData(targetUrl, 1)
-
-      if (pageData.length > 0) {
-        // Store this page's data separately
-        session.pageData[1] = pageData
-        scrapedResults = pageData
-        session.scrapedData = scrapedResults
-      } else {
+      if (pageData.length === 0) {
         return res.status(404).json({
           error: "No breeder information found on the provided URL. Please check the URL and try again.",
         })
       }
 
-      console.log(`Found ${scrapedResults.length} items on page 1`)
+      results = pageData
+      session.currentPage = 1
     }
 
-    // If no data was found, return an error
-    if (scrapedResults.length === 0) {
-      return res.status(404).json({
-        error: "No breeder information found. Please check the URL and try again.",
-      })
-    }
+    // Update session data
+    session.scrapedData = results
 
     // Store the scraped content in the database
     try {
       const { error: upsertError } = await supabase.from("scraped_content").upsert([
         {
           url: targetUrl,
-          content: JSON.stringify(scrapedResults),
+          content: JSON.stringify(results),
           scraped_at: new Date().toISOString(),
           page_count: pageRange ? pageRange.end - pageRange.start + 1 : session.currentPage,
         },
@@ -329,15 +240,16 @@ app.post("/api/scrape", async (req, res) => {
       // Continue even if database storage fails
     }
 
+    // Return the results
     return res.json({
       message: pageRange
         ? `Pages ${pageRange.start} to ${pageRange.end} scraped successfully`
         : `Page ${session.currentPage} scraped successfully`,
-      results: scrapedResults,
+      results: results,
       sessionId: newSessionId,
       pageRange: pageRange,
       page: session.currentPage,
-      totalItems: scrapedResults.length,
+      totalItems: results.length,
     })
   } catch (error) {
     console.error("❌ Error processing scrape request:", error)
