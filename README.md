@@ -1,5 +1,9 @@
 # AI Web Scraping Chat: From API to Full-Stack Application
 
+AI Web Scraping Chat is an innovative web application that combines the power of artificial intelligence with advanced web scraping capabilities. This project showcases my expertise in full-stack development, AI integration, and data processing.
+
+The application allows users to extract structured data from websites using natural language commands and then interact with an AI assistant to analyze and manipulate this data. It's designed to make web scraping and data analysis accessible to users without technical expertise, while also providing powerful tools for more advanced users.
+
 ## Project Overview
 
 The AI Web Scraping Chat project began as a challenge to create an API for AI-assisted web scraping. I took this concept and expanded it into a comprehensive full-stack web application.
