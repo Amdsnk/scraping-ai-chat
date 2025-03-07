@@ -69,8 +69,8 @@ Create a `.env` file in the root directory with the following variables:
 
 1. Clone the repository
    ```bash
-   git clone https://github.com/yourusername/ai-web-scraping-chat.git
-   cd ai-web-scraping-chat
+   git clone https://github.com/Amdsnk/scraping-ai-chat.git
+   cd scraping-ai-chat
 ```
 
 2. Install dependencies
